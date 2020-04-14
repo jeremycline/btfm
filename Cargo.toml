@@ -1,0 +1,31 @@
+[package]
+name = "btfm"
+version = "0.1.0"
+authors = ["jcline"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+deepspeech = "0.6"
+structopt = "0.3"
+log = "0.4"
+stderrlog = "0.4"
+
+[dependencies.audrey]
+features = ["wav"]
+version = "0.2"
+
+[dependencies.diesel]
+features = ["sqlite"]
+version = "1"
+
+[dependencies.serenity]
+features = ["cache", "framework", "gateway", "standard_framework", "http", "native_tls_backend", "voice"]
+version = "0.8"
+git = "https://github.com/serenity-rs/serenity.git"
+rev = "9ad83c4d5a9b26d49e1352e64bfae7dcd41bbeba"
+
+[profile.release]
+lto = true
+codegen-units = 1
