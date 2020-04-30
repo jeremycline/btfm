@@ -19,6 +19,7 @@ use log::{debug, error, info, trace};
 use serenity::{
     client::{bridge::voice::ClientVoiceManager, Context, EventHandler},
     model::{
+        channel::GuildChannel,
         gateway::Ready,
         id::{ChannelId, GuildId},
         voice::VoiceState,
@@ -74,7 +75,7 @@ impl EventHandler for Handler {
         &self,
         context: Context,
         guild_id: Option<GuildId>,
-        _old: Option<VoiceState>,
+        old: Option<VoiceState>,
         new: VoiceState,
     ) {
         let guild_id = match guild_id {
@@ -82,20 +83,43 @@ impl EventHandler for Handler {
             None => return,
         };
 
-        debug!(
-            "Received voice state change - old {:?} - new {:?}",
-            _old, new
-        );
+        debug!("voice_state_update: old={:?}  new={:?}", old, new);
 
-        // TODO note if the last person left the channel and part ourselves
+        let manager_lock = context
+            .data
+            .read()
+            .get::<VoiceManager>()
+            .cloned()
+            .expect("Expected VoiceManager in TypeMap");
+        let mut manager = manager_lock.lock();
+
+        let btfm_data_lock = context
+            .data
+            .read()
+            .get::<BtfmData>()
+            .cloned()
+            .expect("Expected BtfmData in TypeMap");
+        let btfm_data = btfm_data_lock.lock();
+
+        if let Ok(channels) = context.http.get_channels(*btfm_data.guild_id.as_u64()) {
+            let mut channel = channels
+                .iter()
+                .filter(|chan| chan.id == btfm_data.channel_id)
+                .collect::<Vec<&GuildChannel>>();
+            if let Some(channel) = channel.pop() {
+                if let Ok(members) = channel.members(context.cache) {
+                    if members.iter().find(|m| !m.user.read().bot).is_none() {
+                        manager.remove(btfm_data.guild_id);
+                    }
+                }
+            } else {
+                return;
+            }
+        } else {
+            return;
+        }
+
         if let Some(channel_id) = new.channel_id {
-            let btfm_data_lock = context
-                .data
-                .read()
-                .get::<BtfmData>()
-                .cloned()
-                .expect("Expected BtfmData in TypeMap");
-            let btfm_data = btfm_data_lock.lock();
             if btfm_data.channel_id != channel_id {
                 debug!(
                     "Ignoring user joining {:?}, looking for {:?}",
@@ -103,14 +127,6 @@ impl EventHandler for Handler {
                 );
                 return;
             }
-
-            let manager_lock = context
-                .data
-                .read()
-                .get::<VoiceManager>()
-                .cloned()
-                .expect("Expected VoiceManager in TypeMap");
-            let mut manager = manager_lock.lock();
 
             if let Some(handler) = manager.join(guild_id, channel_id) {
                 handler.listen(Some(Box::new(Receiver::new(context.data))));
