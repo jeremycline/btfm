@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 #[macro_use]
 extern crate log;
 extern crate stderrlog;
@@ -20,7 +22,7 @@ fn main() {
         cli::Btfm::Run {
             channel_id,
             btfm_data_dir,
-            deepspeech_model_dir,
+            deepspeech_model,
             discord_token,
             guild_id,
             verbose,
@@ -37,7 +39,7 @@ fn main() {
                 data.insert::<VoiceManager>(Arc::clone(&client.voice_manager));
                 data.insert::<BtfmData>(Arc::new(Mutex::new(BtfmData::new(
                     btfm_data_dir,
-                    deepspeech_model_dir,
+                    deepspeech_model,
                     guild_id,
                     channel_id,
                 ))));

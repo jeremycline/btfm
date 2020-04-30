@@ -15,8 +15,8 @@ pub enum Btfm {
         #[structopt(long, env = "DISCORD_TOKEN")]
         discord_token: String,
         /// Path to the DeepSpeech model directory.
-        #[structopt(long, parse(from_os_str), env = "DEEPSPEECH_MODEL_DIR")]
-        deepspeech_model_dir: PathBuf,
+        #[structopt(long, parse(from_os_str), env = "DEEPSPEECH_MODEL")]
+        deepspeech_model: PathBuf,
         /// Path to the BTFM data directory where clips and the database is stored
         #[structopt(long, parse(from_os_str), env = "BTFM_DATA_DIR")]
         btfm_data_dir: PathBuf,

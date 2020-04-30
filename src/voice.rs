@@ -33,10 +33,6 @@ use crate::DB_NAME;
 /// Discord currently sends 48kHz stereo audio, so we need to convert
 /// it to mono audio at this sample rate.
 const SAMPLE_RATE: u32 = 16_000;
-// These goes away in the next deepspeech-rs release
-const BEAM_WIDTH: u16 = 500;
-const LM_WEIGHT: f32 = 0.75;
-const VALID_WORD_COUNT_WEIGHT: f32 = 1.85;
 
 pub struct VoiceManager;
 impl TypeMapKey for VoiceManager {
@@ -45,7 +41,7 @@ impl TypeMapKey for VoiceManager {
 
 pub struct BtfmData {
     data_dir: PathBuf,
-    deepspeech_model_dir: PathBuf,
+    deepspeech_model: PathBuf,
     guild_id: GuildId,
     channel_id: ChannelId,
 }
@@ -55,13 +51,13 @@ impl TypeMapKey for BtfmData {
 impl BtfmData {
     pub fn new(
         data_dir: PathBuf,
-        deepspeech_model_dir: PathBuf,
+        deepspeech_model: PathBuf,
         guild_id: u64,
         channel_id: u64,
     ) -> BtfmData {
         BtfmData {
             data_dir,
-            deepspeech_model_dir,
+            deepspeech_model,
             guild_id: GuildId(guild_id),
             channel_id: ChannelId(channel_id),
         }
@@ -277,17 +273,8 @@ fn voice_recognition(voice_rx: mpsc::Receiver<Vec<i16>>, client_data: Arc<RwLock
                 .cloned()
                 .expect("Expected BtfmData in TypeMap");
             let btfm_data = btfm_data_lock.lock();
-            let mut deepspeech_model = Model::load_from_files(
-                &btfm_data.deepspeech_model_dir.join("output_graph.pb"),
-                BEAM_WIDTH,
-            )
-            .expect("Unable to load deepspeech model");
-            deepspeech_model.enable_decoder_with_lm(
-                &btfm_data.deepspeech_model_dir.join("lm.binary"),
-                &btfm_data.deepspeech_model_dir.join("trie"),
-                LM_WEIGHT,
-                VALID_WORD_COUNT_WEIGHT,
-            );
+            let mut deepspeech_model = Model::load_from_files(&btfm_data.deepspeech_model)
+                .expect("Unable to load deepspeech model");
             drop(btfm_data);
             drop(btfm_data_lock);
             loop {
