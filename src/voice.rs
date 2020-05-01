@@ -15,11 +15,10 @@ use audrey::read::Reader;
 use audrey::sample::interpolate::{Converter, Linear};
 use audrey::sample::signal::{from_iter, Signal};
 use deepspeech::Model;
-use log::{debug, error, info, trace};
+use log::{debug, error, info, trace, warn};
 use serenity::{
     client::{bridge::voice::ClientVoiceManager, Context, EventHandler},
     model::{
-        channel::GuildChannel,
         gateway::Ready,
         id::{ChannelId, GuildId},
         voice::VoiceState,
@@ -101,43 +100,47 @@ impl EventHandler for Handler {
             .expect("Expected BtfmData in TypeMap");
         let btfm_data = btfm_data_lock.lock();
 
-        if let Ok(channels) = context.http.get_channels(*btfm_data.guild_id.as_u64()) {
-            let mut channel = channels
-                .iter()
-                .filter(|chan| chan.id == btfm_data.channel_id)
-                .collect::<Vec<&GuildChannel>>();
-            if let Some(channel) = channel.pop() {
-                if let Ok(members) = channel.members(context.cache) {
-                    if members.iter().find(|m| !m.user.read().bot).is_none() {
-                        manager.remove(btfm_data.guild_id);
+        // TODO make this less bad
+        if let Ok(channel) = context.http.get_channel(*btfm_data.channel_id.as_u64()) {
+            match channel.guild() {
+                Some(guild_channel_lock) => {
+                    let guild_channel = guild_channel_lock.read();
+                    if let Ok(members) = guild_channel.members(context.cache) {
+                        if members.iter().find(|m| !m.user.read().bot).is_none() {
+                            manager.remove(btfm_data.guild_id);
+                            return;
+                        }
+
+                        if let Some(handler) = manager.get_mut(btfm_data.guild_id) {
+                            if Some(btfm_data.channel_id) != new.channel_id {
+                                debug!("User just joined our channel");
+                                let hello = btfm_data.data_dir.join("hello");
+                                let source = voice::ffmpeg(hello).unwrap();
+                                handler.play(source);
+                            }
+                            return;
+                        } else if let Some(handler) = manager.join(guild_id, btfm_data.channel_id) {
+                            handler.listen(Some(Box::new(Receiver::new(context.data))));
+                            let hello = btfm_data.data_dir.join("hello");
+                            let source = voice::ffmpeg(hello).unwrap();
+                            handler.play(source);
+                        } else {
+                            error!("Unable to join channel");
+                        }
                     }
                 }
-            } else {
-                return;
+                None => {
+                    error!(
+                        "{:?} is not a Guild channel and is not supported!",
+                        btfm_data.channel_id
+                    );
+                }
             }
         } else {
-            return;
-        }
-
-        if let Some(channel_id) = new.channel_id {
-            if btfm_data.channel_id != channel_id {
-                debug!(
-                    "Ignoring user joining {:?}, looking for {:?}",
-                    channel_id, btfm_data.channel_id
-                );
-                return;
-            }
-
-            if let Some(handler) = manager.join(guild_id, channel_id) {
-                handler.listen(Some(Box::new(Receiver::new(context.data))));
-
-                // TODO make this less bad
-                let hello = btfm_data.data_dir.join("hello");
-                let source = voice::ffmpeg(hello).unwrap();
-                handler.play(source);
-            } else {
-                error!("Unable to join channel");
-            }
+            warn!(
+                "Unable to retrieve channel details for {:?}, ignoring voice state update.",
+                &btfm_data.channel_id
+            );
         }
     }
 }
