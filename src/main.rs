@@ -23,6 +23,7 @@ fn main() {
             channel_id,
             btfm_data_dir,
             deepspeech_model,
+            deepspeech_scorer,
             discord_token,
             guild_id,
             verbose,
@@ -40,6 +41,7 @@ fn main() {
                 data.insert::<BtfmData>(Arc::new(Mutex::new(BtfmData::new(
                     btfm_data_dir,
                     deepspeech_model,
+                    deepspeech_scorer,
                     guild_id,
                     channel_id,
                 ))));

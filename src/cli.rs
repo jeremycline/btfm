@@ -17,6 +17,9 @@ pub enum Btfm {
         /// Path to the DeepSpeech model directory.
         #[structopt(long, parse(from_os_str), env = "DEEPSPEECH_MODEL")]
         deepspeech_model: PathBuf,
+        /// Path to the optional DeepSpeech scorer (increases accuracy)
+        #[structopt(long, parse(from_os_str), env = "DEEPSPEECH_SCORER")]
+        deepspeech_scorer: Option<PathBuf>,
         /// Path to the BTFM data directory where clips and the database is stored
         #[structopt(long, parse(from_os_str), env = "BTFM_DATA_DIR")]
         btfm_data_dir: PathBuf,

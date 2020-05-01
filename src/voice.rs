@@ -45,6 +45,7 @@ impl TypeMapKey for VoiceManager {
 pub struct BtfmData {
     data_dir: PathBuf,
     deepspeech_model: PathBuf,
+    deepspeech_external_scorer: Option<PathBuf>,
     guild_id: GuildId,
     channel_id: ChannelId,
 }
@@ -55,12 +56,14 @@ impl BtfmData {
     pub fn new(
         data_dir: PathBuf,
         deepspeech_model: PathBuf,
+        deepspeech_external_scorer: Option<PathBuf>,
         guild_id: u64,
         channel_id: u64,
     ) -> BtfmData {
         BtfmData {
             data_dir,
             deepspeech_model,
+            deepspeech_external_scorer,
             guild_id: GuildId(guild_id),
             channel_id: ChannelId(channel_id),
         }
@@ -298,6 +301,9 @@ fn voice_recognition(voice_rx: mpsc::Receiver<Vec<i16>>, client_data: Arc<RwLock
             // TODO use optional scorer for improved accuracy
             let mut deepspeech_model = Model::load_from_files(&btfm_data.deepspeech_model)
                 .expect("Unable to load deepspeech model");
+            if let Some(scorer) = &btfm_data.deepspeech_external_scorer {
+                deepspeech_model.enable_external_scorer(scorer)
+            }
             drop(btfm_data);
             drop(btfm_data_lock);
             loop {
