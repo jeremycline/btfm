@@ -15,6 +15,7 @@ use audrey::read::Reader;
 use audrey::sample::interpolate::{Converter, Linear};
 use audrey::sample::signal::{from_iter, Signal};
 use deepspeech::Model;
+use diesel::prelude::*;
 use log::{debug, error, info, trace, warn};
 use serenity::{
     client::{bridge::voice::ClientVoiceManager, Context, EventHandler},
@@ -27,6 +28,8 @@ use serenity::{
     voice,
 };
 
+use crate::models;
+use crate::schema;
 use crate::DB_NAME;
 
 /// The sample rate (in HZ) that DeepSpeech expects audio to be in.
@@ -292,6 +295,7 @@ fn voice_recognition(voice_rx: mpsc::Receiver<Vec<i16>>, client_data: Arc<RwLock
                 .cloned()
                 .expect("Expected BtfmData in TypeMap");
             let btfm_data = btfm_data_lock.lock();
+            // TODO use optional scorer for improved accuracy
             let mut deepspeech_model = Model::load_from_files(&btfm_data.deepspeech_model)
                 .expect("Unable to load deepspeech model");
             drop(btfm_data);
@@ -372,16 +376,13 @@ where
     audio_buffer
 }
 
+/// Select an audio clip to play given the phrase detected.
 fn play_clip(client_data: Arc<RwLock<TypeMap>>, result: &str) {
     let manager_lock = client_data
         .read()
         .get::<VoiceManager>()
         .cloned()
         .expect("Expected voice manager");
-
-    use crate::models;
-    use crate::schema::clips::dsl::*;
-    use diesel::prelude::*;
 
     let btfm_data_lock = client_data
         .read()
@@ -391,7 +392,7 @@ fn play_clip(client_data: Arc<RwLock<TypeMap>>, result: &str) {
     let btfm_data = btfm_data_lock.lock();
     let conn = SqliteConnection::establish(btfm_data.data_dir.join(DB_NAME).to_str().unwrap())
         .expect("Unabled to connect to database");
-    let _clips = clips
+    let _clips = schema::clips::table
         .load::<models::Clip>(&conn)
         .expect("Database query failed");
     let mut manager = manager_lock.lock();
