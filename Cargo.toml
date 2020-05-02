@@ -11,13 +11,14 @@ deepspeech = "0.7"
 structopt = "0.3"
 log = "0.4"
 stderrlog = "0.4"
+chrono = "0.4"
 
 [dependencies.audrey]
 features = ["wav"]
 version = "0.2"
 
 [dependencies.diesel]
-features = ["sqlite"]
+features = ["sqlite", "chrono"]
 version = "1"
 
 [dependencies.serenity]

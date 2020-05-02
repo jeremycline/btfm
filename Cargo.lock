@@ -118,6 +118,7 @@ name = "btfm"
 version = "0.1.0"
 dependencies = [
  "audrey",
+ "chrono",
  "deepspeech",
  "diesel",
  "log",
@@ -290,6 +291,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "33d7ca63eb2efea87a7f56a283acc49e2ce4b2bd54adf7465dc1d81fef13d8fc"
 dependencies = [
  "byteorder",
+ "chrono",
  "diesel_derives",
  "libsqlite3-sys",
 ]

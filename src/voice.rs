@@ -8,12 +8,13 @@ use std::path::PathBuf;
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use audrey::hound;
 use audrey::read::Reader;
 use audrey::sample::interpolate::{Converter, Linear};
 use audrey::sample::signal::{from_iter, Signal};
+use chrono::NaiveDateTime;
 use deepspeech::Model;
 use diesel::prelude::*;
 use log::{debug, error, info, trace, warn};
@@ -398,16 +399,53 @@ fn play_clip(client_data: Arc<RwLock<TypeMap>>, result: &str) {
     let btfm_data = btfm_data_lock.lock();
     let conn = SqliteConnection::establish(btfm_data.data_dir.join(DB_NAME).to_str().unwrap())
         .expect("Unabled to connect to database");
-    let _clips = schema::clips::table
+    let clips = schema::clips::table
         .load::<models::Clip>(&conn)
         .expect("Database query failed");
     let mut manager = manager_lock.lock();
     if let Some(handler) = manager.get_mut(&btfm_data.guild_id) {
-        for clip in _clips {
+        let current_time = NaiveDateTime::from_timestamp(
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("Check your system clock")
+                .as_secs() as i64,
+            0,
+        );
+        if let Some(last_play) = clips.iter().map(|c| &c.last_played).max() {
+            let since_last_play = current_time - *last_play;
+            debug!(
+                "It's been {:?} since the last time a clip was played",
+                since_last_play
+            );
+            if since_last_play < chrono::Duration::seconds(10) {
+                info!("Ignoring speech since it's been less than 10 seconds");
+                return;
+            }
+        }
+
+        for mut clip in clips {
             if result.contains(&clip.phrase) {
                 info!("Matched on '{}'", &clip.phrase);
                 let source = voice::ffmpeg(btfm_data.data_dir.join(&clip.audio_file)).unwrap();
                 handler.play(source);
+                clip.plays += 1;
+                clip.last_played = current_time;
+                let update = diesel::update(schema::clips::table)
+                    .set(&clip)
+                    .execute(&conn);
+                match update {
+                    Ok(rows_updated) => {
+                        if rows_updated != 1 {
+                            error!(
+                                "Update applied to {} rows which is not expected",
+                                rows_updated
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        error!("Updating the clip resulted in {:?}", e);
+                    }
+                }
             }
         }
     } else {
