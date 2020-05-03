@@ -1,4 +1,12 @@
-# Setup
+# btfm
+
+[I don't know how, But They Found Me (BTFM)](https://www.youtube.com/watch?v=hslfuqhtn7A).
+
+btfm is a [Discord](https://discordapp.com) bot that listens on a voice channel for key phrases, and
+plays audio clips into the channel in response.
+
+
+## Setup
 
 Download the [deepspeech native_client build for your
 platform](https://github.com/mozilla/DeepSpeech/releases/tag/v0.7.0), along
