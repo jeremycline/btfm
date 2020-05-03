@@ -71,10 +71,74 @@ impl BtfmData {
     }
 }
 
+/// Join or part from the configured voice channel.
+/// If the bot is the only user in the channel it will leave. If there's a
+/// non-bot user in the channel it'll join.
+///
+/// Returns true if it created a new connection, false otherwise.
+fn manage_voice_channel(context: &Context) -> bool {
+    let manager_lock = context
+        .data
+        .read()
+        .get::<VoiceManager>()
+        .cloned()
+        .expect("Expected VoiceManager in TypeMap");
+    let mut manager = manager_lock.lock();
+
+    let btfm_data_lock = context
+        .data
+        .read()
+        .get::<BtfmData>()
+        .cloned()
+        .expect("Expected BtfmData in TypeMap");
+    let btfm_data = btfm_data_lock.lock();
+
+    if let Ok(channel) = context.http.get_channel(*btfm_data.channel_id.as_u64()) {
+        match channel.guild() {
+            Some(guild_channel_lock) => {
+                let guild_channel = guild_channel_lock.read();
+                if let Ok(members) = guild_channel.members(&context.cache) {
+                    if members.iter().find(|m| !m.user.read().bot).is_none() {
+                        manager.remove(btfm_data.guild_id);
+                    } else if manager.get(&btfm_data.guild_id).is_none() {
+                        if let Some(handler) =
+                            manager.join(&btfm_data.guild_id, &btfm_data.channel_id)
+                        {
+                            handler.listen(Some(Box::new(Receiver::new(context.data.clone()))));
+                            let hello = btfm_data.data_dir.join("hello");
+                            let source = voice::ffmpeg(hello).unwrap();
+                            handler.play(source);
+                            return true;
+                        } else {
+                            error!(
+                                "Unable to join {:?} on {:?}",
+                                &btfm_data.guild_id, &btfm_data.channel_id
+                            );
+                        }
+                    }
+                }
+            }
+            None => {
+                error!(
+                    "{:?} is not a Guild channel and is not supported!",
+                    btfm_data.channel_id
+                );
+            }
+        }
+    } else {
+        warn!(
+            "Unable to retrieve channel details for {:?}, ignoring voice state update.",
+            &btfm_data.channel_id
+        );
+    }
+    false
+}
+
 pub struct Handler;
 impl EventHandler for Handler {
-    fn ready(&self, _: Context, ready: Ready) {
+    fn ready(&self, context: Context, ready: Ready) {
         info!("Connected as {}", ready.user.name);
+        manage_voice_channel(&context);
     }
 
     fn voice_state_update(
@@ -84,12 +148,14 @@ impl EventHandler for Handler {
         old: Option<VoiceState>,
         new: VoiceState,
     ) {
-        let guild_id = match guild_id {
-            Some(guild_id) => guild_id,
-            None => return,
-        };
+        if guild_id.is_none() {
+            return;
+        }
 
         debug!("voice_state_update: old={:?}  new={:?}", old, new);
+        if manage_voice_channel(&context) {
+            return;
+        }
 
         let manager_lock = context
             .data
@@ -107,47 +173,13 @@ impl EventHandler for Handler {
             .expect("Expected BtfmData in TypeMap");
         let btfm_data = btfm_data_lock.lock();
 
-        // TODO make this less bad
-        if let Ok(channel) = context.http.get_channel(*btfm_data.channel_id.as_u64()) {
-            match channel.guild() {
-                Some(guild_channel_lock) => {
-                    let guild_channel = guild_channel_lock.read();
-                    if let Ok(members) = guild_channel.members(context.cache) {
-                        if members.iter().find(|m| !m.user.read().bot).is_none() {
-                            manager.remove(btfm_data.guild_id);
-                            return;
-                        }
-
-                        if let Some(handler) = manager.get_mut(btfm_data.guild_id) {
-                            if Some(btfm_data.channel_id) != new.channel_id {
-                                debug!("User just joined our channel");
-                                let hello = btfm_data.data_dir.join("hello");
-                                let source = voice::ffmpeg(hello).unwrap();
-                                handler.play(source);
-                            }
-                            return;
-                        } else if let Some(handler) = manager.join(guild_id, btfm_data.channel_id) {
-                            handler.listen(Some(Box::new(Receiver::new(context.data))));
-                            let hello = btfm_data.data_dir.join("hello");
-                            let source = voice::ffmpeg(hello).unwrap();
-                            handler.play(source);
-                        } else {
-                            error!("Unable to join channel");
-                        }
-                    }
-                }
-                None => {
-                    error!(
-                        "{:?} is not a Guild channel and is not supported!",
-                        btfm_data.channel_id
-                    );
-                }
+        if let Some(handler) = manager.get_mut(btfm_data.guild_id) {
+            if Some(btfm_data.channel_id) == new.channel_id {
+                debug!("User just joined our channel");
+                let hello = btfm_data.data_dir.join("hello");
+                let source = voice::ffmpeg(hello).unwrap();
+                handler.play(source);
             }
-        } else {
-            warn!(
-                "Unable to retrieve channel details for {:?}, ignoring voice state update.",
-                &btfm_data.channel_id
-            );
         }
     }
 }
