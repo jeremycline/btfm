@@ -15,7 +15,7 @@ with the
 
 Set up your paths so that deepspeech can be found by the compiler (or drop it into /usr/local/lib/ and run ldconfig).
 
-Install make, autotools, libopus headers, libsqlite headers, and the libsodium headers.
+Install make, autotools, libopus headers, libsqlite headers, libsodium headers, and the openssl headers.
 
 Create the data directory and database:
 
