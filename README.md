@@ -35,3 +35,13 @@ To run, the following environment variables are required:
   * `DISCORD_TOKEN`: Your Discord API token.
   * `CHANNEL_ID`: The Discord Channel ID to join when someone else joins.
   * `GUILD_ID`: The Discord Guild ID being connected to.
+
+
+## Development environment
+
+If you are so inclined, there is a Dockerfile and some helper scripts in the ```devel/``` folder
+that you may find to be handy for development. The scripts assume you have
+[podman](https://podman.io/) installed. You can use ```build.sh``` to build a development container,
+and you can use ```cargo.sh``` to run Rust's [cargo](https://doc.rust-lang.org/cargo/) tool inside
+the container. You can probably guess what ```test.sh``` does, if you are somebody's kid and are
+smart.
