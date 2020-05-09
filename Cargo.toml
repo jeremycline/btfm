@@ -1,8 +1,10 @@
 [package]
 name = "btfm"
-version = "0.1.0"
-authors = ["jcline"]
+version = "0.3.0"
+authors = ["Jeremy Cline", "Randy Barlow"]
 edition = "2018"
+description = "A Discord bot that plays audio clips based on voice chat"
+license = "GPL-2.0-or-later"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -22,7 +24,7 @@ features = ["sqlite", "chrono"]
 version = "1"
 
 [dependencies.serenity]
-features = ["cache", "framework", "gateway", "standard_framework", "http", "native_tls_backend", "voice"]
+features = ["cache", "framework", "gateway", "standard_framework", "http", "native_tls_backend", "voice", "utils"]
 version = "0.8"
 git = "https://github.com/serenity-rs/serenity.git"
 rev = "9ad83c4d5a9b26d49e1352e64bfae7dcd41bbeba"
