@@ -248,7 +248,7 @@ impl User {
                                 continue 'outer;
                             }
                             Err(mpsc::RecvTimeoutError::Disconnected) => {
-                                error!("Got disconnect from voice handler");
+                                info!("User's voice buffer thread got a disconnect and is shutting down");
                                 break 'outer;
                             }
                         }
@@ -266,6 +266,7 @@ impl User {
 pub struct Receiver {
     voice_sender: mpsc::Sender<Vec<i16>>,
     users: HashMap<u32, User>,
+    ssrc_map: HashMap<u64, u32>,
 }
 
 impl Receiver {
@@ -275,13 +276,28 @@ impl Receiver {
         Receiver {
             voice_sender,
             users: HashMap::new(),
+            ssrc_map: HashMap::new(),
         }
     }
 }
 
 impl voice::AudioReceiver for Receiver {
-    fn speaking_update(&mut self, _ssrc: u32, _user_id: u64, _speaking: bool) {
-        debug!("Got speaking update ({}) for {}", _speaking, _user_id);
+    fn speaking_update(&mut self, ssrc: u32, user_id: u64, speaking: bool) {
+        debug!("Got speaking update ({}) for {}", speaking, user_id);
+        self.ssrc_map.entry(user_id).or_insert(ssrc);
+    }
+
+    fn client_connect(&mut self, ssrc: u32, user_id: u64) {
+        debug!("New user ({}) connected", user_id);
+        self.ssrc_map.entry(user_id).or_insert(ssrc);
+    }
+
+    fn client_disconnect(&mut self, user_id: u64) {
+        debug!("User ({}) disconnected", user_id);
+        if let Some(ssrc) = self.ssrc_map.remove(&user_id) {
+           self.users.remove(&ssrc);
+            debug!("Dropped voice buffer for {}", user_id);
+        }
     }
 
     fn voice_packet(
