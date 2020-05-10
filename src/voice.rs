@@ -216,8 +216,6 @@ impl PartialEq for VoicePacket {
 }
 
 struct User {
-    // Doesn't seem possible to see if the thread is joinable or not so this may not be useful
-    buffer_thread: thread::JoinHandle<()>,
     packet_buffer: mpsc::Sender<VoicePacket>,
 }
 
@@ -225,7 +223,7 @@ impl User {
     pub fn new(voice_processor: mpsc::Sender<Vec<i16>>) -> User {
         let (sender, receiver) = mpsc::channel::<VoicePacket>();
         // Spawn a thread to buffer audio for the user and pre-process it for recognition
-        let t = thread::Builder::new()
+        thread::Builder::new()
             .name("user_voice_buffer".to_string())
             .spawn(move || {
                 let timeout = Duration::from_secs(1);
@@ -260,7 +258,6 @@ impl User {
             .unwrap();
 
         User {
-            buffer_thread: t,
             packet_buffer: sender,
         }
     }
