@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #[macro_use]
+extern crate diesel_migrations;
+#[macro_use]
 extern crate log;
 extern crate stderrlog;
 
@@ -15,6 +17,8 @@ use structopt::StructOpt;
 use btfm::cli;
 use btfm::voice::{BtfmData, Handler, VoiceManager};
 use btfm::{models, schema, DB_NAME};
+
+embed_migrations!("migrations/");
 
 fn main() {
     let opts = cli::Btfm::from_args();
@@ -35,6 +39,9 @@ fn main() {
                 .timestamp(stderrlog::Timestamp::Second)
                 .init()
                 .unwrap();
+            let conn = SqliteConnection::establish(btfm_data_dir.join(DB_NAME).to_str().unwrap())
+                .expect("Unabled to connect to database");
+            embedded_migrations::run(&conn).expect("Failed to run database migrations!");
             let mut client = Client::new(&discord_token, Handler).expect("Unable to create client");
             {
                 let mut data = client.data.write();
@@ -62,6 +69,7 @@ fn main() {
                 let conn =
                     SqliteConnection::establish(btfm_data_dir.join(DB_NAME).to_str().unwrap())
                         .expect("Unabled to connect to database");
+                embedded_migrations::run(&conn).expect("Failed to run database migrations!");
                 fs::create_dir_all(btfm_data_dir.join("clips"))
                     .expect("Unable to create clips directory");
                 let clips_path = btfm_data_dir.join("clips");
@@ -89,6 +97,7 @@ fn main() {
                 let conn =
                     SqliteConnection::establish(btfm_data_dir.join(DB_NAME).to_str().unwrap())
                         .expect("Unabled to connect to database");
+                embedded_migrations::run(&conn).expect("Failed to run database migrations!");
                 let clips = schema::clips::table
                     .load::<models::Clip>(&conn)
                     .expect("Database query failed");
@@ -103,6 +112,7 @@ fn main() {
                 let conn =
                     SqliteConnection::establish(btfm_data_dir.join(DB_NAME).to_str().unwrap())
                         .expect("Unabled to connect to database");
+                embedded_migrations::run(&conn).expect("Failed to run database migrations!");
                 match diesel::delete(schema::clips::table.filter(schema::clips::id.eq(clip_id)))
                     .execute(&conn)
                 {

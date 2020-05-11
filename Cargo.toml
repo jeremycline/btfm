@@ -15,6 +15,7 @@ log = "0.4"
 stderrlog = "0.4"
 chrono = "0.4"
 rand = "0.7"
+diesel_migrations = "1"
 
 [dependencies.audrey]
 features = ["wav"]
