@@ -18,6 +18,7 @@ use chrono::NaiveDateTime;
 use deepspeech::Model;
 use diesel::prelude::*;
 use log::{debug, error, info, trace, warn};
+use rand::prelude::*;
 use serenity::{
     client::{bridge::voice::ClientVoiceManager, Context, EventHandler},
     model::{
@@ -448,6 +449,7 @@ fn play_clip(client_data: Arc<RwLock<TypeMap>>, result: &str) {
         .load::<models::Clip>(&conn)
         .expect("Database query failed");
     let mut manager = manager_lock.lock();
+    let mut rng = rand::thread_rng();
     if let Some(handler) = manager.get_mut(&btfm_data.guild_id) {
         let current_time = NaiveDateTime::from_timestamp(
             SystemTime::now()
@@ -462,8 +464,23 @@ fn play_clip(client_data: Arc<RwLock<TypeMap>>, result: &str) {
                 "It's been {:?} since the last time a clip was played",
                 since_last_play
             );
-            if since_last_play < chrono::Duration::seconds(10) {
-                info!("Ignoring speech since it's been less than 10 seconds");
+            // Play chance is 1 - e^(-x/256) which equates to:
+            //   ~20% chance after 60 seconds
+            //   ~37% chance after 120 seconds
+            //   ~50% chance after 180 seconds
+            //   ~60% chance after 240 seconds
+            //   ~69% chance after 300 seconds
+            let play_chance = 1.0 - (-since_last_play.num_seconds() as f64 / 256.0).exp();
+            info!(
+                "Clips have a {} percent chance (repeating of course) of being played",
+                play_chance * 100.0
+            );
+            let random_roll = rng.gen::<f64>();
+            if random_roll > play_chance {
+                info!(
+                    "Random roll of {} is higher than play chance {}; ignoring",
+                    random_roll, play_chance,
+                );
                 return;
             }
         }

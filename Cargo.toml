@@ -14,6 +14,7 @@ structopt = "0.3"
 log = "0.4"
 stderrlog = "0.4"
 chrono = "0.4"
+rand = "0.7"
 
 [dependencies.audrey]
 features = ["wav"]
