@@ -8,6 +8,7 @@ use std::fs;
 use std::sync::Arc;
 
 use diesel::prelude::*;
+use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use serenity::{client::Client, framework::StandardFramework, prelude::*};
 use structopt::StructOpt;
 
@@ -63,14 +64,19 @@ fn main() {
                         .expect("Unabled to connect to database");
                 fs::create_dir_all(btfm_data_dir.join("clips"))
                     .expect("Unable to create clips directory");
-                let clip_path = btfm_data_dir
-                    .join("clips")
-                    .join(&file.file_name().expect("Invalid file name"));
-                fs::copy(&file, &clip_path).expect("Unable to copy clip to data directory");
+                let clips_path = btfm_data_dir.join("clips");
+                let file_prefix: String = thread_rng().sample_iter(&Alphanumeric).take(6).collect();
+                let file_name = file
+                    .file_name()
+                    .expect("Path cannot terminate in ..")
+                    .to_str()
+                    .expect("File name is not valid UTF-8");
+                let clip_destination = clips_path.join(file_prefix + "-" + file_name);
+                fs::copy(&file, &clip_destination).expect("Unable to copy clip to data directory");
                 let clip = models::NewClip {
                     phrase: &phrase,
                     description: &description,
-                    audio_file: &clip_path.to_str().unwrap(),
+                    audio_file: &clip_destination.to_str().unwrap(),
                 };
 
                 diesel::insert_into(schema::clips::table)
