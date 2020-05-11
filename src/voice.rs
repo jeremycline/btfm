@@ -353,6 +353,7 @@ fn voice_recognition(voice_rx: mpsc::Receiver<Vec<i16>>, client_data: Arc<RwLock
             }
             drop(btfm_data);
             drop(btfm_data_lock);
+            info!("Successfully voice recognition model");
             loop {
                 match voice_rx.recv() {
                     Ok(audio_buffer) => {
@@ -361,7 +362,7 @@ fn voice_recognition(voice_rx: mpsc::Receiver<Vec<i16>>, client_data: Arc<RwLock
                         play_clip(Arc::clone(&client_data), &result);
                     }
                     Err(mpsc::RecvError) => {
-                        error!("Got disconnect from voice handler");
+                        info!("Voice recognition thread channel closed; shutting down thread");
                         break;
                     }
                 }
