@@ -296,7 +296,7 @@ impl voice::AudioReceiver for Receiver {
     fn client_disconnect(&mut self, user_id: u64) {
         debug!("User ({}) disconnected", user_id);
         if let Some(ssrc) = self.ssrc_map.remove(&user_id) {
-           self.users.remove(&ssrc);
+            self.users.remove(&ssrc);
             debug!("Dropped voice buffer for {}", user_id);
         }
     }
@@ -486,28 +486,33 @@ fn play_clip(client_data: Arc<RwLock<TypeMap>>, result: &str) {
             }
         }
 
-        for mut clip in clips {
+        let mut potential_clips = Vec::new();
+        for clip in clips {
             if result.contains(&clip.phrase) {
                 info!("Matched on '{}'", &clip.phrase);
-                let source = voice::ffmpeg(btfm_data.data_dir.join(&clip.audio_file)).unwrap();
-                handler.play(source);
-                clip.plays += 1;
-                clip.last_played = current_time;
-                let update = diesel::update(schema::clips::table)
-                    .set(&clip)
-                    .execute(&conn);
-                match update {
-                    Ok(rows_updated) => {
-                        if rows_updated != 1 {
-                            error!(
-                                "Update applied to {} rows which is not expected",
-                                rows_updated
-                            );
-                        }
+                potential_clips.push(clip);
+            }
+        }
+
+        if let Some(mut clip) = potential_clips.into_iter().choose(&mut rng) {
+            let source = voice::ffmpeg(btfm_data.data_dir.join(&clip.audio_file)).unwrap();
+            handler.play(source);
+            clip.plays += 1;
+            clip.last_played = current_time;
+            let update = diesel::update(schema::clips::table)
+                .set(clip)
+                .execute(&conn);
+            match update {
+                Ok(rows_updated) => {
+                    if rows_updated != 1 {
+                        error!(
+                            "Update applied to {} rows which is not expected",
+                            rows_updated
+                        );
                     }
-                    Err(e) => {
-                        error!("Updating the clip resulted in {:?}", e);
-                    }
+                }
+                Err(e) => {
+                    error!("Updating the clip resulted in {:?}", e);
                 }
             }
         }
