@@ -1,0 +1,9 @@
+- name: ldconfig
+  command: ldconfig
+
+- name: restart btfm
+  systemd:
+    name: btfm
+    enabled: true
+    daemon_reload: yes
+    state: restarted

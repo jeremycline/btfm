@@ -1,0 +1,107 @@
+- name: Install rpmfusion
+  dnf:
+    name:
+      - "https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-{{ ansible_distribution_major_version }}.noarch.rpm"
+      - "https://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-{{ ansible_distribution_major_version }}.noarch.rpm"
+    state: present
+  when: ansible_distribution == "Fedora"
+
+- name: Install system dependencies
+  package: name="{{ item }}" state=present
+  with_items:
+    - ffmpeg
+    - libsodium
+    - openssl
+    - opus
+    - sqlite
+    - xz
+
+- name: Create btfm user
+  user:
+    name: btfm
+    state: present
+    shell: /bin/bash
+    append: true
+
+- name: Add /usr/local/lib64 to the ld path
+  copy: content="/usr/local/lib64" dest=/etc/ld.so.conf.d/locallib.conf
+
+- name: Create btfm data directory
+  file:
+    path: "{{ btfm_data_dir }}"
+    state: directory
+    owner: btfm
+    group: btfm
+    mode: 0644
+
+- name: Download btfm
+  get_url:
+    url: https://github.com/jeremycline/btfm/releases/download/v{{ btfm_version }}/btfm-{{ btfm_version }}-x86_64-linux
+    dest: "/usr/local/bin/btfm"
+    mode: 0755
+    checksum: sha256:24c8dc33771757dfa0eef8c9bfd71ef47319e7e73620ea0dde774617ace054c5
+
+- name: Download deepspeech model
+  get_url:
+    url: https://github.com/mozilla/DeepSpeech/releases/download/v{{ deepspeech_version }}/deepspeech-{{ deepspeech_version }}-models.pbmm
+    dest: "{{ deepspeech_model }}"
+    mode: 0644
+    checksum: sha256:9677f5f826c198c91e40d140abe4c2c2b28675841549c55e42546361d529ba66
+
+- name: Download deepspeech scorer
+  get_url:
+    url: https://github.com/mozilla/DeepSpeech/releases/download/v{{ deepspeech_version }}/deepspeech-{{ deepspeech_version }}-models.scorer
+    dest: "{{ deepspeech_scorer }}"
+    mode: 0644
+    checksum: sha256:d0cf926ab9cab54a8a7d70003b931b2d62ebd9105ed392d1ec9c840029867799
+
+- stat:
+    path: "/usr/local/lib64/libdeepspeech.so"
+  register: ds_lib
+
+- name: create temporary directory for deepspeech
+  tempfile:
+    state: directory
+  register: ds_tempdir
+  when: ds_lib.stat.islnk is not defined
+
+- name: Download deepspeech native library
+  get_url:
+    url: https://github.com/mozilla/DeepSpeech/releases/download/v{{ deepspeech_version }}/native_client.amd64.cpu.linux.tar.xz
+    dest: "{{ ds_tempdir.path }}/deepspeech_native_client.tar.xz"
+    mode: 0644
+    checksum: sha256:123e12f680452206dd9c5888d2a7e11f6a4408057e22d5c999a9b4703cbfa3ec
+  when: ds_lib.stat.islnk is not defined
+
+- name: Unarchive deepspeech shared library
+  unarchive:
+    src: "{{ ds_tempdir.path }}/deepspeech_native_client.tar.xz"
+    remote_src: true
+    dest: "{{ ds_tempdir.path }}/"
+  when: ds_lib.stat.islnk is not defined
+
+- name: Install deepspeech shared library
+  copy:
+    src: "{{ ds_tempdir.path }}/libdeepspeech.so"
+    remote_src: true
+    dest: "/usr/local/lib64/libdeepspeech.so"
+  when: ds_lib.stat.islnk is not defined
+  notify:
+    - ldconfig
+
+- name: Create btfm service file
+  template:
+    src: btfm.service
+    dest: /etc/systemd/system/btfm.service
+    mode: 0640
+    owner: root
+    group: btfm
+  notify:
+    - restart btfm
+
+- name: Start btfm
+  systemd:
+    name: btfm
+    enabled: true
+    daemon_reload: yes
+    state: started

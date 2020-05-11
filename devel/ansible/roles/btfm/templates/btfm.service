@@ -1,0 +1,23 @@
+[Unit]
+Description=BTFM Discord bot
+After=network.target
+
+[Service]
+Type=simple
+User=btfm
+Group=btfm
+Environment="BTFM_DATA_DIR={{ btfm_data_dir }}"
+Environment="DEEPSPEECH_MODEL={{ deepspeech_model }}"
+Environment="DEEPSPEECH_SCORER={{ deepspeech_scorer }}"
+Environment="DISCORD_TOKEN={{ discord_token }}"
+Environment="CHANNEL_ID={{ channel_id }}"
+Environment="GUILD_ID={{ guild_id }}"
+ExecStart=/usr/local/bin/btfm run -vv
+Restart=always
+RestartSec=60
+
+[Install]
+WantedBy=multi-user.target
+
+[Install]
+WantedBy=multi-user.target

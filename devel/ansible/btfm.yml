@@ -1,0 +1,10 @@
+- hosts: btfm
+  become: true
+  become_method: sudo
+  vars:
+    ansible_python_interpreter: "/usr/bin/python3"
+    guild_id: 0
+    channel_id: 0
+    discord_token: "change me"
+  roles:
+    - btfm
