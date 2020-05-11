@@ -32,7 +32,7 @@
     state: directory
     owner: btfm
     group: btfm
-    mode: 0644
+    mode: "0755"
 
 - name: Download btfm
   get_url:
