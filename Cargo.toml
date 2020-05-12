@@ -31,6 +31,10 @@ version = "0.8"
 git = "https://github.com/serenity-rs/serenity.git"
 rev = "9ad83c4d5a9b26d49e1352e64bfae7dcd41bbeba"
 
+[dev-dependencies]
+rand = {version = "0.7", features = ["small_rng"]}
+rand_core = "0"
+
 [profile.release]
 lto = true
 codegen-units = 1
