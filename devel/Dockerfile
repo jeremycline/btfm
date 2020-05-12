@@ -13,6 +13,7 @@ RUN dnf install -y \
 	make \
 	openssl-devel \
 	opus-devel \
+	rustfmt \
 	sqlite-devel \
 	xz
 
