@@ -514,9 +514,8 @@ fn play_clip(client_data: Arc<RwLock<TypeMap>>, result: &str) {
             handler.play(source);
             clip.plays += 1;
             clip.last_played = current_time;
-            let update = diesel::update(schema::clips::table)
-                .set(clip)
-                .execute(&conn);
+            let filter = schema::clips::table.filter(schema::clips::id.eq(clip.id));
+            let update = diesel::update(filter).set(clip).execute(&conn);
             match update {
                 Ok(rows_updated) => {
                     if rows_updated != 1 {
@@ -524,6 +523,8 @@ fn play_clip(client_data: Arc<RwLock<TypeMap>>, result: &str) {
                             "Update applied to {} rows which is not expected",
                             rows_updated
                         );
+                    } else {
+                        debug!("Updated the play count and last_played time successfully");
                     }
                 }
                 Err(e) => {
