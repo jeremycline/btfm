@@ -520,7 +520,9 @@ fn play_clip(client_data: Arc<RwLock<TypeMap>>, result: &str) {
                 .as_secs() as i64,
             0,
         );
-        if rate_limit(&clips, current_time, btfm_data.rate_adjuster, &mut rng) {
+        if result.contains("excuse me") {
+            info!("Not rate limiting clip since someone was so polite");
+        } else if rate_limit(&clips, current_time, btfm_data.rate_adjuster, &mut rng) {
             return;
         }
 
