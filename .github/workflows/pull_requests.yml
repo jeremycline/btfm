@@ -39,6 +39,14 @@ jobs:
     needs: build
     steps:
       - uses: actions/checkout@v2
+      - name: Install dependencies
+        run: |
+          curl -sOL https://github.com/mozilla/DeepSpeech/releases/download/v0.7.0/native_client.amd64.cpu.linux.tar.xz
+          unxz native_client.amd64.cpu.linux.tar.xz
+          tar -xf native_client.amd64.cpu.linux.tar
+          sudo cp libdeepspeech.so /usr/local/lib/
+          sudo ldconfig
+          sudo apt install -y libsqlite3-dev
       - uses: actions-rs/cargo@v1
         with:
           command: clippy
@@ -49,6 +57,14 @@ jobs:
     needs: build
     steps:
       - uses: actions/checkout@v2
+      - name: Install dependencies
+        run: |
+          curl -sOL https://github.com/mozilla/DeepSpeech/releases/download/v0.7.0/native_client.amd64.cpu.linux.tar.xz
+          unxz native_client.amd64.cpu.linux.tar.xz
+          tar -xf native_client.amd64.cpu.linux.tar
+          sudo cp libdeepspeech.so /usr/local/lib/
+          sudo ldconfig
+          sudo apt install -y libsqlite3-dev
       - uses: actions-rs/cargo@v1
         with:
           command: test
