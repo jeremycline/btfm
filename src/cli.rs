@@ -29,6 +29,9 @@ pub enum Btfm {
         /// Discord Guild ID to join.
         #[structopt(long, env = "GUILD_ID")]
         guild_id: u64,
+        /// How much to rate limit the bot. The odds of playing are 1 - e^-(x/rate_adjuster).
+        #[structopt(short, long, default_value = "256", env = "RATE_ADJUSTER")]
+        rate_adjuster: f64,
     },
     /// Manage audio clips for the bot
     Clip(Clip),

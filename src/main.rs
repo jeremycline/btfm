@@ -32,6 +32,7 @@ fn main() {
             discord_token,
             guild_id,
             verbose,
+            rate_adjuster,
         } => {
             stderrlog::new()
                 .module(module_path!())
@@ -52,6 +53,7 @@ fn main() {
                     deepspeech_scorer,
                     guild_id,
                     channel_id,
+                    rate_adjuster,
                 ))));
             }
             client.with_framework(StandardFramework::new());

@@ -50,6 +50,7 @@ pub struct BtfmData {
     deepspeech_external_scorer: Option<PathBuf>,
     guild_id: GuildId,
     channel_id: ChannelId,
+    rate_adjuster: f64,
 }
 impl TypeMapKey for BtfmData {
     type Value = Arc<Mutex<BtfmData>>;
@@ -61,6 +62,7 @@ impl BtfmData {
         deepspeech_external_scorer: Option<PathBuf>,
         guild_id: u64,
         channel_id: u64,
+        rate_adjuster: f64,
     ) -> BtfmData {
         BtfmData {
             data_dir,
@@ -68,6 +70,7 @@ impl BtfmData {
             deepspeech_external_scorer,
             guild_id: GuildId(guild_id),
             channel_id: ChannelId(channel_id),
+            rate_adjuster,
         }
     }
 }
@@ -451,6 +454,8 @@ where
 ///
 /// `clips` - A list of all clips we know about
 /// `current_time` - The current time. Bet you didn't guess that.
+/// `rate_adjuster` - Play chance is 1 - e^(-x/rate_adjuster). With 256 this is a 20% chance
+///                   after a minute, 50% after 3 minutes, and 69% after 5 minutes.
 /// `rng` - A Random number generator, used to add some spice to this otherwise cold, heartless
 ///         bot.
 ///
@@ -460,6 +465,7 @@ where
 fn rate_limit(
     clips: &Vec<models::Clip>,
     current_time: chrono::NaiveDateTime,
+    rate_adjuster: f64,
     rng: &mut dyn rand::RngCore,
 ) -> bool {
     if let Some(last_play) = clips.iter().map(|c| &c.last_played).max() {
@@ -468,13 +474,7 @@ fn rate_limit(
             "It's been {:?} since the last time a clip was played",
             since_last_play
         );
-        // Play chance is 1 - e^(-x/256) which equates to:
-        //   ~20% chance after 60 seconds
-        //   ~37% chance after 120 seconds
-        //   ~50% chance after 180 seconds
-        //   ~60% chance after 240 seconds
-        //   ~69% chance after 300 seconds
-        let play_chance = 1.0 - (-since_last_play.num_seconds() as f64 / 256.0).exp();
+        let play_chance = 1.0 - (-since_last_play.num_seconds() as f64 / rate_adjuster).exp();
         info!(
             "Clips have a {} percent chance (repeating of course) of being played",
             play_chance * 100.0
@@ -520,7 +520,7 @@ fn play_clip(client_data: Arc<RwLock<TypeMap>>, result: &str) {
                 .as_secs() as i64,
             0,
         );
-        if rate_limit(&clips, current_time, &mut rng) {
+        if rate_limit(&clips, current_time, btfm_data.rate_adjuster, &mut rng) {
             return;
         }
 
@@ -602,7 +602,7 @@ mod tests {
         );
         let mut rng = FakeRng(0);
 
-        assert_eq!(rate_limit(&clips, current_time, &mut rng), false);
+        assert_eq!(rate_limit(&clips, current_time, 256.0, &mut rng), false);
     }
 
     #[test]
