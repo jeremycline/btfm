@@ -445,6 +445,52 @@ where
     audio_buffer
 }
 
+/// Return true if we should not play a clip (i.e., we are rate limited).
+///
+/// # Arguments
+///
+/// `clips` - A list of all clips we know about
+/// `current_time` - The current time. Bet you didn't guess that.
+/// `rng` - A Random number generator, used to add some spice to this otherwise cold, heartless
+///         bot.
+///
+/// # Returns
+///
+/// true if a clip should not be played, or false if we should play a clip.
+fn rate_limit(
+    clips: &Vec<models::Clip>,
+    current_time: chrono::NaiveDateTime,
+    rng: &mut dyn rand::RngCore,
+) -> bool {
+    if let Some(last_play) = clips.iter().map(|c| &c.last_played).max() {
+        let since_last_play = current_time - *last_play;
+        debug!(
+            "It's been {:?} since the last time a clip was played",
+            since_last_play
+        );
+        // Play chance is 1 - e^(-x/256) which equates to:
+        //   ~20% chance after 60 seconds
+        //   ~37% chance after 120 seconds
+        //   ~50% chance after 180 seconds
+        //   ~60% chance after 240 seconds
+        //   ~69% chance after 300 seconds
+        let play_chance = 1.0 - (-since_last_play.num_seconds() as f64 / 256.0).exp();
+        info!(
+            "Clips have a {} percent chance (repeating of course) of being played",
+            play_chance * 100.0
+        );
+        let random_roll = rng.gen::<f64>();
+        if random_roll > play_chance {
+            info!(
+                "Random roll of {} is higher than play chance {}; ignoring",
+                random_roll, play_chance,
+            );
+            return true;
+        }
+    }
+    false
+}
+
 /// Select an audio clip to play given the phrase detected.
 fn play_clip(client_data: Arc<RwLock<TypeMap>>, result: &str) {
     let manager_lock = client_data
@@ -474,31 +520,8 @@ fn play_clip(client_data: Arc<RwLock<TypeMap>>, result: &str) {
                 .as_secs() as i64,
             0,
         );
-        if let Some(last_play) = clips.iter().map(|c| &c.last_played).max() {
-            let since_last_play = current_time - *last_play;
-            debug!(
-                "It's been {:?} since the last time a clip was played",
-                since_last_play
-            );
-            // Play chance is 1 - e^(-x/256) which equates to:
-            //   ~20% chance after 60 seconds
-            //   ~37% chance after 120 seconds
-            //   ~50% chance after 180 seconds
-            //   ~60% chance after 240 seconds
-            //   ~69% chance after 300 seconds
-            let play_chance = 1.0 - (-since_last_play.num_seconds() as f64 / 256.0).exp();
-            info!(
-                "Clips have a {} percent chance (repeating of course) of being played",
-                play_chance * 100.0
-            );
-            let random_roll = rng.gen::<f64>();
-            if random_roll > play_chance {
-                info!(
-                    "Random roll of {} is higher than play chance {}; ignoring",
-                    random_roll, play_chance,
-                );
-                return;
-            }
+        if rate_limit(&clips, current_time, &mut rng) {
+            return;
         }
 
         let mut potential_clips = Vec::new();
@@ -540,6 +563,47 @@ fn play_clip(client_data: Arc<RwLock<TypeMap>>, result: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct FakeRng(u32);
+
+    /// This allows our tests to have predictable results, and to have the same predictable results
+    /// on both 32-bit and 64-bit architectures. This is used for all tests except for the Gaussian
+    /// tests, since those do behave differently between 32-bit and 64-bit systems when using this
+    /// rng.
+    impl rand::RngCore for FakeRng {
+        fn next_u32(&mut self) -> u32 {
+            self.0 += 1;
+            self.0 - 1
+        }
+
+        fn next_u64(&mut self) -> u64 {
+            self.next_u32() as u64
+        }
+
+        fn fill_bytes(&mut self, dest: &mut [u8]) {
+            rand_core::impls::fill_bytes_via_next(self, dest)
+        }
+
+        fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand_core::Error> {
+            self.fill_bytes(dest);
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn test_rate_limit_no_clips() {
+        let clips = vec![];
+        let current_time = NaiveDateTime::from_timestamp(
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("Check your system clock")
+                .as_secs() as i64,
+            0,
+        );
+        let mut rng = FakeRng(0);
+
+        assert_eq!(rate_limit(&clips, current_time, &mut rng), false);
+    }
 
     #[test]
     fn test_packets_to_wav() {
