@@ -12,6 +12,7 @@ Environment="DEEPSPEECH_SCORER={{ deepspeech_scorer }}"
 Environment="DISCORD_TOKEN={{ discord_token }}"
 Environment="CHANNEL_ID={{ channel_id }}"
 Environment="GUILD_ID={{ guild_id }}"
+Environment="RATE_ADJUSTER={{ rate_adjuster }}"
 ExecStart=/usr/local/bin/btfm run -vv
 Restart=always
 RestartSec=60
