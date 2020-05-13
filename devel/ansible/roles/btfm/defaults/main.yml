@@ -1,5 +1,5 @@
 btfm_version: 0.4.0
 deepspeech_version: 0.7.0
 btfm_data_dir: /var/lib/btfm/
-deepspeech_model: /var/lib/btfm/deepspeech.model
+deepspeech_model: /var/lib/btfm/deepspeech.pbmm
 deepspeech_scorer: /var/lib/btfm/deepspeech.scorer
