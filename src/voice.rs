@@ -106,9 +106,7 @@ fn manage_voice_channel(context: &Context) -> bool {
                             manager.join(&btfm_data.guild_id, &btfm_data.channel_id)
                         {
                             handler.listen(Some(Box::new(Receiver::new(context.data.clone()))));
-                            let hello = btfm_data.data_dir.join("hello");
-                            let source = voice::ffmpeg(hello).unwrap();
-                            handler.play(source);
+                            handler.play(hello_there(&btfm_data));
                             return true;
                         } else {
                             error!(
@@ -133,6 +131,25 @@ fn manage_voice_channel(context: &Context) -> bool {
         );
     }
     false
+}
+
+/// Return an AudioSource to greet a new user (or the channel at large).
+///
+/// If the data directory doesn't contain a custom greeting file, the sound of
+/// silence is returned. This is important because Discord doesn't seem
+/// to send audio until the bot plays something.
+fn hello_there(btfm_data: &BtfmData) -> Box<dyn voice::AudioSource> {
+    let hello = btfm_data.data_dir.join("hello");
+    if let Err(metadata) = hello.metadata() {
+        info!(
+            "Playing silence instead of a custom greating: {:?}",
+            metadata
+        );
+        let sound_of_silence = Cursor::new(&[0xF8, 0xFF, 0xFE]);
+        voice::opus(true, sound_of_silence)
+    } else {
+        voice::ffmpeg(hello).unwrap()
+    }
 }
 
 pub struct Handler;
@@ -177,9 +194,7 @@ impl EventHandler for Handler {
         if let Some(handler) = manager.get_mut(btfm_data.guild_id) {
             if Some(btfm_data.channel_id) == new.channel_id {
                 debug!("User just joined our channel");
-                let hello = btfm_data.data_dir.join("hello");
-                let source = voice::ffmpeg(hello).unwrap();
-                handler.play(source);
+                handler.play(hello_there(&btfm_data));
             }
         }
     }
