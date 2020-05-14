@@ -95,6 +95,47 @@ fn main() {
                     .expect("Failed to save clip");
                 println!("Added clip successfully");
             }
+            cli::Clip::Edit {
+                btfm_data_dir,
+                clip_id,
+                description,
+                phrase,
+            } => {
+                let conn =
+                    SqliteConnection::establish(btfm_data_dir.join(DB_NAME).to_str().unwrap())
+                        .expect("Unabled to connect to database");
+                embedded_migrations::run(&conn).expect("Failed to run database migrations!");
+                let filter = schema::clips::table.filter(schema::clips::id.eq(clip_id));
+                let mut clip = filter
+                    .load::<models::Clip>(&conn)
+                    .expect("Database query fails");
+                if let Some(mut clip) = clip.pop() {
+                    if let Some(description) = description {
+                        clip.description = description;
+                    }
+                    if let Some(phrase) = phrase {
+                        clip.phrase = phrase;
+                    }
+                    let update = diesel::update(filter).set(clip).execute(&conn);
+                    match update {
+                        Ok(rows_updated) => {
+                            if rows_updated != 1 {
+                                error!(
+                                    "Update applied to {} rows which is not expected",
+                                    rows_updated
+                                );
+                            } else {
+                                info!("Updated the play count and last_played time successfully");
+                            }
+                        }
+                        Err(e) => {
+                            error!("Updating the clip resulted in {:?}", e);
+                        }
+                    }
+                } else {
+                    error!("No clip with id {} exists", clip_id);
+                }
+            }
             cli::Clip::List { btfm_data_dir } => {
                 let conn =
                     SqliteConnection::establish(btfm_data_dir.join(DB_NAME).to_str().unwrap())

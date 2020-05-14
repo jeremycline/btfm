@@ -54,6 +54,20 @@ pub enum Clip {
         #[structopt(parse(from_os_str))]
         file: PathBuf,
     },
+    /// Edit an existing clip in the database
+    Edit {
+        #[structopt(long, parse(from_os_str), env = "BTFM_DATA_DIR")]
+        btfm_data_dir: PathBuf,
+        /// The clip ID (from "clip list")
+        #[structopt()]
+        clip_id: i32,
+        /// The phrase that triggers the audio clip
+        #[structopt(short, long)]
+        phrase: Option<String>,
+        /// A short description of the audio clip
+        #[structopt(short, long)]
+        description: Option<String>,
+    },
     /// List clips in the database
     List {
         /// Path to the BTFM data directory where clips and the database is stored
