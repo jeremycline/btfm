@@ -201,8 +201,12 @@ impl EventHandler for Handler {
             .expect("Expected BtfmData in TypeMap");
         let btfm_data = btfm_data_lock.lock();
 
+        let joined = match old {
+            Some(state) => state.channel_id != Some(btfm_data.channel_id),
+            None => true,
+        };
         if let Some(handler) = manager.get_mut(btfm_data.guild_id) {
-            if Some(btfm_data.channel_id) == new.channel_id {
+            if Some(btfm_data.channel_id) == new.channel_id && joined {
                 debug!("User just joined our channel");
                 handler.play(hello_there(&btfm_data));
             }
