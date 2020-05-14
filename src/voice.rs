@@ -463,7 +463,7 @@ where
 ///
 /// true if a clip should not be played, or false if we should play a clip.
 fn rate_limit(
-    clips: &Vec<models::Clip>,
+    clips: &[models::Clip],
     current_time: chrono::NaiveDateTime,
     rate_adjuster: f64,
     rng: &mut dyn rand::RngCore,
