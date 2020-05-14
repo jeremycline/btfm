@@ -75,11 +75,18 @@ impl BtfmData {
     }
 }
 
-/// Join or part from the configured voice channel.
-/// If the bot is the only user in the channel it will leave. If there's a
-/// non-bot user in the channel it'll join.
+/// Join or part from the configured voice channel. Called on startup and
+/// if an event happens for the voice channel. If the bot is the only user in the
+/// channel it will leave. If there's a non-bot user in the channel it'll join.
 ///
-/// Returns true if it created a new connection, false otherwise.
+/// # Arguments
+///
+/// `context` - The serenity context for the event. Either when the ready event
+///             fires or a user joins/parts/mutes/etc.
+///
+/// # Returns
+///
+/// true if it created a new connection, false otherwise.
 fn manage_voice_channel(context: &Context) -> bool {
     let manager_lock = context
         .data
