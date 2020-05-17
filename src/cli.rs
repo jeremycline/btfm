@@ -26,6 +26,9 @@ pub enum Btfm {
         /// Discord Channel ID to join.
         #[structopt(long, env = "CHANNEL_ID")]
         channel_id: u64,
+        /// Discord Channel ID to log events to
+        #[structopt(long, env = "LOG_CHANNEL_ID")]
+        log_channel_id: Option<u64>,
         /// Discord Guild ID to join.
         #[structopt(long, env = "GUILD_ID")]
         guild_id: u64,

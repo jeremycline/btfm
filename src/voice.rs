@@ -21,6 +21,7 @@ use log::{debug, error, info, trace, warn};
 use rand::prelude::*;
 use serenity::{
     client::{bridge::voice::ClientVoiceManager, Context, EventHandler},
+    http::client::Http,
     model::{
         gateway::Ready,
         id::{ChannelId, GuildId},
@@ -43,6 +44,10 @@ pub struct VoiceManager;
 impl TypeMapKey for VoiceManager {
     type Value = Arc<Mutex<ClientVoiceManager>>;
 }
+pub struct HttpClient;
+impl TypeMapKey for HttpClient {
+    type Value = Arc<serenity::CacheAndHttp>;
+}
 
 pub struct BtfmData {
     data_dir: PathBuf,
@@ -50,6 +55,7 @@ pub struct BtfmData {
     deepspeech_external_scorer: Option<PathBuf>,
     guild_id: GuildId,
     channel_id: ChannelId,
+    log_channel_id: Option<ChannelId>,
     rate_adjuster: f64,
 }
 impl TypeMapKey for BtfmData {
@@ -62,6 +68,7 @@ impl BtfmData {
         deepspeech_external_scorer: Option<PathBuf>,
         guild_id: u64,
         channel_id: u64,
+        log_channel_id: Option<u64>,
         rate_adjuster: f64,
     ) -> BtfmData {
         BtfmData {
@@ -70,6 +77,7 @@ impl BtfmData {
             deepspeech_external_scorer,
             guild_id: GuildId(guild_id),
             channel_id: ChannelId(channel_id),
+            log_channel_id: log_channel_id.and_then(|id| Some(ChannelId(id))),
             rate_adjuster,
         }
     }
@@ -510,6 +518,12 @@ fn play_clip(client_data: Arc<RwLock<TypeMap>>, result: &str) {
         .cloned()
         .expect("Expected voice manager");
 
+    let http_and_cache = client_data
+        .read()
+        .get::<HttpClient>()
+        .cloned()
+        .expect("Expected HttpClient in TypeMap");
+
     let btfm_data_lock = client_data
         .read()
         .get::<BtfmData>()
@@ -531,9 +545,12 @@ fn play_clip(client_data: Arc<RwLock<TypeMap>>, result: &str) {
                 .as_secs() as i64,
             0,
         );
+
         if result.contains("excuse me") {
             info!("Not rate limiting clip since someone was so polite");
         } else if rate_limit(&clips, current_time, btfm_data.rate_adjuster, &mut rng) {
+            let msg = format!("Bot heard \"{:}\", but is rate-limited.", result);
+            log_event_to_channel(btfm_data.log_channel_id, &http_and_cache.http, &msg);
             return;
         }
 
@@ -545,6 +562,12 @@ fn play_clip(client_data: Arc<RwLock<TypeMap>>, result: &str) {
             }
         }
 
+        let msg = format!(
+            "Bot heard \"{:}\" and there are {:} matching clips",
+            result,
+            potential_clips.len()
+        );
+        log_event_to_channel(btfm_data.log_channel_id, &http_and_cache.http, &msg);
         if let Some(mut clip) = potential_clips.into_iter().choose(&mut rng) {
             let source = voice::ffmpeg(btfm_data.data_dir.join(&clip.audio_file)).unwrap();
             handler.play(source);
@@ -570,6 +593,36 @@ fn play_clip(client_data: Arc<RwLock<TypeMap>>, result: &str) {
         }
     } else {
         panic!("Handler missing for guild");
+    }
+}
+
+/// Send the given message to an optional channel.
+fn log_event_to_channel(channel_id: Option<ChannelId>, http_client: &Arc<Http>, message: &str) {
+    if let Some(channel_id) = channel_id {
+        let chan = http_client.get_channel(*channel_id.as_u64());
+        if let Ok(chan) = chan {
+            if let Some(chan) = chan.guild() {
+                let chan = chan.read();
+                if let Err(e) = chan.say(http_client, message) {
+                    error!("Unable to send message to channel: {:?}", e);
+                }
+            } else {
+                error!(
+                    "Channel {:} is not a guild channel, not logging {:}",
+                    channel_id, message
+                );
+            }
+        } else {
+            error!(
+                "Did not get a valid channel for the log channel id {:}",
+                channel_id
+            );
+        }
+    } else {
+        debug!(
+            "No channel id provided to log events, not logging {:}",
+            message
+        );
     }
 }
 

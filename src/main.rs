@@ -15,7 +15,7 @@ use serenity::{client::Client, framework::StandardFramework, prelude::*};
 use structopt::StructOpt;
 
 use btfm::cli;
-use btfm::voice::{BtfmData, Handler, VoiceManager};
+use btfm::voice::{BtfmData, Handler, HttpClient, VoiceManager};
 use btfm::{models, schema, DB_NAME};
 
 embed_migrations!("migrations/");
@@ -26,6 +26,7 @@ fn main() {
     match opts {
         cli::Btfm::Run {
             channel_id,
+            log_channel_id,
             btfm_data_dir,
             deepspeech_model,
             deepspeech_scorer,
@@ -47,12 +48,14 @@ fn main() {
             {
                 let mut data = client.data.write();
                 data.insert::<VoiceManager>(Arc::clone(&client.voice_manager));
+                data.insert::<HttpClient>(Arc::clone(&client.cache_and_http));
                 data.insert::<BtfmData>(Arc::new(Mutex::new(BtfmData::new(
                     btfm_data_dir,
                     deepspeech_model,
                     deepspeech_scorer,
                     guild_id,
                     channel_id,
+                    log_channel_id,
                     rate_adjuster,
                 ))));
             }
