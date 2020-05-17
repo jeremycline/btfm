@@ -278,12 +278,27 @@ struct User {
 }
 
 impl User {
-    pub fn new(voice_processor: mpsc::Sender<Vec<i16>>) -> User {
+    pub fn new(client_data: Arc<RwLock<TypeMap>>) -> User {
         let (sender, receiver) = mpsc::channel::<VoicePacket>();
         // Spawn a thread to buffer audio for the user and pre-process it for recognition
         thread::Builder::new()
             .name("user_voice_buffer".to_string())
             .spawn(move || {
+                let btfm_data_lock = client_data
+                    .read()
+                    .get::<BtfmData>()
+                    .cloned()
+                    .expect("Expected BtfmData in TypeMap");
+                let btfm_data = btfm_data_lock.lock();
+                let mut deepspeech_model = Model::load_from_files(&btfm_data.deepspeech_model)
+                    .expect("Unable to load deepspeech model");
+                if let Some(scorer) = &btfm_data.deepspeech_external_scorer {
+                    deepspeech_model.enable_external_scorer(scorer)
+                }
+                drop(btfm_data);
+                drop(btfm_data_lock);
+                info!("Successfully voice recognition model");
+
                 let timeout = Duration::from_secs(1);
                 'outer: loop {
                     let mut voice_packets = Vec::<VoicePacket>::new();
@@ -296,13 +311,9 @@ impl User {
                                 }
                                 let audio_buffer = packets_to_wav(voice_packets);
                                 let audio_buffer = interpolate(audio_buffer);
-                                match voice_processor.send(audio_buffer) {
-                                    Ok(_) => {}
-                                    Err(e) => {
-                                        error!("Failed to send to voice thread {:?}", e);
-                                        break 'outer;
-                                    }
-                                }
+                                let result = deepspeech_model.speech_to_text(&audio_buffer).unwrap();
+                                info!("STT thinks someone said \"{}\"", result);
+                                play_clip(Arc::clone(&client_data), &result);
                                 continue 'outer;
                             }
                             Err(mpsc::RecvTimeoutError::Disconnected) => {
@@ -322,19 +333,17 @@ impl User {
 }
 
 pub struct Receiver {
-    voice_sender: mpsc::Sender<Vec<i16>>,
     users: HashMap<u32, User>,
     ssrc_map: HashMap<u64, u32>,
+    client_data: Arc<RwLock<TypeMap>>,
 }
 
 impl Receiver {
     pub fn new(client_data: Arc<RwLock<TypeMap>>) -> Receiver {
-        let (voice_sender, voice_receiver) = mpsc::channel::<Vec<i16>>();
-        voice_recognition(voice_receiver, client_data);
         Receiver {
-            voice_sender,
             users: HashMap::new(),
             ssrc_map: HashMap::new(),
+            client_data,
         }
     }
 }
@@ -373,11 +382,9 @@ impl voice::AudioReceiver for Receiver {
             _sequence,
             _timestamp
         );
-        let voice_sender = &mut self.voice_sender;
+        let client_data = Arc::clone(&self.client_data);
         let users = &mut self.users;
-        let user = users
-            .entry(_ssrc)
-            .or_insert_with(|| User::new(voice_sender.clone()));
+        let user = users.entry(_ssrc).or_insert_with(|| User::new(client_data));
         match user
             .packet_buffer
             .send(VoicePacket::new(_timestamp, _stereo, _data))
@@ -389,43 +396,6 @@ impl voice::AudioReceiver for Receiver {
             }
         }
     }
-}
-
-fn voice_recognition(voice_rx: mpsc::Receiver<Vec<i16>>, client_data: Arc<RwLock<TypeMap>>) {
-    // TODO return the thread reference so the it can be associated with the client and cleaned up
-    thread::Builder::new()
-        .name("voice_recognition".to_string())
-        .spawn(move || {
-            let btfm_data_lock = client_data
-                .read()
-                .get::<BtfmData>()
-                .cloned()
-                .expect("Expected BtfmData in TypeMap");
-            let btfm_data = btfm_data_lock.lock();
-            // TODO use optional scorer for improved accuracy
-            let mut deepspeech_model = Model::load_from_files(&btfm_data.deepspeech_model)
-                .expect("Unable to load deepspeech model");
-            if let Some(scorer) = &btfm_data.deepspeech_external_scorer {
-                deepspeech_model.enable_external_scorer(scorer)
-            }
-            drop(btfm_data);
-            drop(btfm_data_lock);
-            info!("Successfully voice recognition model");
-            loop {
-                match voice_rx.recv() {
-                    Ok(audio_buffer) => {
-                        let result = deepspeech_model.speech_to_text(&audio_buffer).unwrap();
-                        info!("STT thinks someone said \"{}\"", result);
-                        play_clip(Arc::clone(&client_data), &result);
-                    }
-                    Err(mpsc::RecvError) => {
-                        info!("Voice recognition thread channel closed; shutting down thread");
-                        break;
-                    }
-                }
-            }
-        })
-        .unwrap();
 }
 
 /// Converts voice data to a wav and returns it as an in-memory file-like object.
