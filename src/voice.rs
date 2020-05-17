@@ -124,7 +124,7 @@ fn manage_voice_channel(context: &Context) -> bool {
                             manager.join(&btfm_data.guild_id, &btfm_data.channel_id)
                         {
                             handler.listen(Some(Box::new(Receiver::new(context.data.clone()))));
-                            handler.play(hello_there(&btfm_data));
+                            handler.play(hello_there(&btfm_data, "hello"));
                             return true;
                         } else {
                             error!(
@@ -156,12 +156,12 @@ fn manage_voice_channel(context: &Context) -> bool {
 /// If the data directory doesn't contain a custom greeting file, the sound of
 /// silence is returned. This is important because Discord doesn't seem
 /// to send audio until the bot plays something.
-fn hello_there(btfm_data: &BtfmData) -> Box<dyn voice::AudioSource> {
-    let hello = btfm_data.data_dir.join("hello");
+fn hello_there(btfm_data: &BtfmData, event_name: &str) -> Box<dyn voice::AudioSource> {
+    let hello = btfm_data.data_dir.join(event_name);
     if let Err(metadata) = hello.metadata() {
         info!(
-            "Playing silence instead of a custom greating: {:?}",
-            metadata
+            "Playing silence instead of custom audio for event {}: {:?}",
+            event_name, metadata
         );
         let sound_of_silence = Cursor::new(&[0xF8, 0xFF, 0xFE]);
         voice::opus(true, sound_of_silence)
@@ -209,14 +209,34 @@ impl EventHandler for Handler {
             .expect("Expected BtfmData in TypeMap");
         let btfm_data = btfm_data_lock.lock();
 
-        let joined = match old {
-            Some(state) => state.channel_id != Some(btfm_data.channel_id),
-            None => true,
-        };
         if let Some(handler) = manager.get_mut(btfm_data.guild_id) {
-            if Some(btfm_data.channel_id) == new.channel_id && joined {
-                debug!("User just joined our channel");
-                handler.play(hello_there(&btfm_data));
+            // This event pertains to the channel we care about.
+            if Some(btfm_data.channel_id) == new.channel_id {
+                match old {
+                    Some(old_state) => {
+                        // Order matters here, the UI mutes users who deafen
+                        // themselves so look at deafen events before dealing
+                        // with muting
+                        if old_state.self_deaf != new.self_deaf && new.self_deaf {
+                            debug!("Someone deafened themselves in a channel we care about");
+                            handler.play(hello_there(&btfm_data, "deaf"));
+                        } else if old_state.self_deaf != new.self_deaf && !new.self_deaf {
+                            debug!("Someone un-deafened themselves in a channel we care about");
+                            handler.play(hello_there(&btfm_data, "undeaf"));
+                        } else if old_state.self_mute != new.self_mute && new.self_mute {
+                            debug!("Someone muted in the channel we care about");
+                            handler.play(hello_there(&btfm_data, "mute"));
+                        } else if old_state.self_mute != new.self_mute && !new.self_mute {
+                            debug!("Someone un-muted in the channel we care about");
+                            handler.play(hello_there(&btfm_data, "unmute"));
+                        }
+                    }
+                    None => {
+                        debug!("User just joined our channel");
+                        handler.play(hello_there(&btfm_data, "hello"));
+                        return;
+                    }
+                }
             }
         }
     }
