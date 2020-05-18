@@ -39,7 +39,7 @@
     url: https://github.com/jeremycline/btfm/releases/download/v{{ btfm_version }}/btfm-{{ btfm_version }}-x86_64-linux
     dest: "/usr/local/bin/btfm"
     mode: 0755
-    checksum: sha256:897ece69872e9bb400c640744e228e84cb9f6f77529828af04a99a748ac36f10
+    checksum: sha256:9bed44e9d9820b9b754fd6c6886d815a0df6b9fd0356eb54dc763038f17cff02
 
 - name: Download deepspeech model
   get_url:
