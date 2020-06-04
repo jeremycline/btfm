@@ -35,11 +35,6 @@ use crate::models;
 use crate::schema;
 use crate::DB_NAME;
 
-/// The sample rate (in HZ) that DeepSpeech expects audio to be in.
-/// Discord currently sends 48kHz stereo audio, so we need to convert
-/// it to mono audio at this sample rate.
-const SAMPLE_RATE: u32 = 16_000;
-
 pub struct VoiceManager;
 impl TypeMapKey for VoiceManager {
     type Value = Arc<Mutex<ClientVoiceManager>>;
@@ -310,7 +305,7 @@ impl User {
                                     continue;
                                 }
                                 let audio_buffer = packets_to_wav(voice_packets);
-                                let audio_buffer = interpolate(audio_buffer);
+                                let audio_buffer = interpolate(audio_buffer, deepspeech_model.get_sample_rate() as u32);
                                 let result = deepspeech_model.speech_to_text(&audio_buffer).unwrap();
                                 info!("STT thinks someone said \"{}\"", result);
                                 play_clip(Arc::clone(&client_data), &result);
@@ -434,7 +429,7 @@ fn packets_to_wav(mut voice_packets: Vec<VoicePacket>) -> Cursor<Vec<u8>> {
 }
 
 /// Interpolate the wav to the sample rate used by the deepspeech model.
-fn interpolate<F>(wav: F) -> Vec<i16>
+fn interpolate<F>(wav: F, target_hz: u32) -> Vec<i16>
 where
     F: std::io::Read,
     F: std::io::Seek,
@@ -442,7 +437,7 @@ where
     let mut reader = Reader::new(wav).unwrap();
     let description = reader.description();
 
-    let audio_buffer: Vec<_> = if description.sample_rate() == SAMPLE_RATE {
+    let audio_buffer: Vec<_> = if description.sample_rate() == target_hz {
         reader.samples().map(|s| s.unwrap()).collect()
     } else {
         let interpolator = Linear::new([0i16], [0]);
@@ -450,7 +445,7 @@ where
             from_iter(reader.samples::<i16>().map(|s| [s.unwrap()])),
             interpolator,
             description.sample_rate() as f64,
-            SAMPLE_RATE as f64,
+            target_hz as f64,
         );
         conv.until_exhausted().map(|v| v[0]).collect()
     };
