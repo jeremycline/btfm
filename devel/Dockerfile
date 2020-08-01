@@ -28,5 +28,6 @@ RUN cd /devel && cargo build
 RUN cd /devel && cargo test
 # This way we can cache all the doc dependencies
 RUN cd /devel && cargo doc
+RUN cargo install cargo-audit
 
 CMD ["bash"]
