@@ -72,7 +72,7 @@ impl BtfmData {
             deepspeech_external_scorer,
             guild_id: GuildId(guild_id),
             channel_id: ChannelId(channel_id),
-            log_channel_id: log_channel_id.and_then(|id| Some(ChannelId(id))),
+            log_channel_id: log_channel_id.map(|id| ChannelId(id)),
             rate_adjuster,
         }
     }
