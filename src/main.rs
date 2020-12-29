@@ -10,24 +10,29 @@ use std::fs;
 use std::sync::Arc;
 
 use diesel::prelude::*;
-use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use serenity::{client::Client, framework::StandardFramework, prelude::*};
+use songbird::{
+    driver::{Config as DriverConfig, DecodeMode},
+    SerenityInit, Songbird,
+};
 use structopt::StructOpt;
 
-use btfm::cli;
-use btfm::voice::{BtfmData, Handler, HttpClient, VoiceManager};
-use btfm::{models, schema, DB_NAME};
+use btfm::voice::{BtfmData, Handler, HttpClient};
+use btfm::{cli, db, schema, DB_NAME};
 
 embed_migrations!("migrations/");
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let opts = cli::Btfm::from_args();
+    let conn = SqliteConnection::establish(opts.btfm_data_dir.join(DB_NAME).to_str().unwrap())
+        .expect("Unabled to connect to database");
+    embedded_migrations::run(&conn).expect("Failed to run database migrations!");
 
-    match opts {
-        cli::Btfm::Run {
+    match opts.command {
+        cli::Command::Run {
             channel_id,
             log_channel_id,
-            btfm_data_dir,
             deepspeech_model,
             deepspeech_scorer,
             discord_token,
@@ -41,16 +46,23 @@ fn main() {
                 .timestamp(stderrlog::Timestamp::Second)
                 .init()
                 .unwrap();
-            let conn = SqliteConnection::establish(btfm_data_dir.join(DB_NAME).to_str().unwrap())
-                .expect("Unabled to connect to database");
-            embedded_migrations::run(&conn).expect("Failed to run database migrations!");
-            let mut client = Client::new(&discord_token, Handler).expect("Unable to create client");
+
+            let framework = StandardFramework::new();
+            let songbird = Songbird::serenity();
+            songbird.set_config(DriverConfig::default().decode_mode(DecodeMode::Decode));
+
+            let mut client = Client::builder(&discord_token)
+                .event_handler(Handler)
+                .framework(framework)
+                .register_songbird_with(songbird)
+                .await
+                .expect("Failed to create client");
             {
-                let mut data = client.data.write();
-                data.insert::<VoiceManager>(Arc::clone(&client.voice_manager));
+                let mut data = client.data.write().await;
+
                 data.insert::<HttpClient>(Arc::clone(&client.cache_and_http));
                 data.insert::<BtfmData>(Arc::new(Mutex::new(BtfmData::new(
-                    btfm_data_dir,
+                    opts.btfm_data_dir,
                     deepspeech_model,
                     deepspeech_scorer,
                     guild_id,
@@ -59,106 +71,38 @@ fn main() {
                     rate_adjuster,
                 ))));
             }
-            client.with_framework(StandardFramework::new());
             let _ = client
                 .start()
+                .await
                 .map_err(|why| error!("Client ended: {:?}", why));
         }
-        cli::Btfm::Clip(clip_subcommand) => match clip_subcommand {
+
+        cli::Command::Clip(clip_subcommand) => match clip_subcommand {
             cli::Clip::Add {
-                btfm_data_dir,
                 description,
                 file,
                 phrase,
             } => {
-                let conn =
-                    SqliteConnection::establish(btfm_data_dir.join(DB_NAME).to_str().unwrap())
-                        .expect("Unabled to connect to database");
-                embedded_migrations::run(&conn).expect("Failed to run database migrations!");
-                fs::create_dir_all(btfm_data_dir.join("clips"))
+                fs::create_dir_all(opts.btfm_data_dir.join("clips"))
                     .expect("Unable to create clips directory");
-                let clips_path = btfm_data_dir.join("clips");
-                let file_prefix: String = thread_rng().sample_iter(&Alphanumeric).take(6).collect();
-                let file_name = file
-                    .file_name()
-                    .expect("Path cannot terminate in ..")
-                    .to_str()
-                    .expect("File name is not valid UTF-8");
-                let clip_destination = clips_path.join(file_prefix + "-" + file_name);
-                fs::copy(&file, &clip_destination).expect("Unable to copy clip to data directory");
-                let clip = models::NewClip {
-                    phrase: &phrase,
-                    description: &description,
-                    audio_file: &clip_destination.to_str().unwrap(),
-                };
-
-                diesel::insert_into(schema::clips::table)
-                    .values(&clip)
-                    .execute(&conn)
-                    .expect("Failed to save clip");
-                println!("Added clip successfully");
+                db::add_clip(&conn, &opts.btfm_data_dir, &file, &description, &phrase)
             }
+
             cli::Clip::Edit {
-                btfm_data_dir,
                 clip_id,
                 description,
                 phrase,
             } => {
-                let conn =
-                    SqliteConnection::establish(btfm_data_dir.join(DB_NAME).to_str().unwrap())
-                        .expect("Unabled to connect to database");
-                embedded_migrations::run(&conn).expect("Failed to run database migrations!");
-                let filter = schema::clips::table.filter(schema::clips::id.eq(clip_id));
-                let mut clip = filter
-                    .load::<models::Clip>(&conn)
-                    .expect("Database query fails");
-                if let Some(mut clip) = clip.pop() {
-                    if let Some(description) = description {
-                        clip.description = description;
-                    }
-                    if let Some(phrase) = phrase {
-                        clip.phrase = phrase;
-                    }
-                    let update = diesel::update(filter).set(clip).execute(&conn);
-                    match update {
-                        Ok(rows_updated) => {
-                            if rows_updated != 1 {
-                                error!(
-                                    "Update applied to {} rows which is not expected",
-                                    rows_updated
-                                );
-                            } else {
-                                info!("Updated the play count and last_played time successfully");
-                            }
-                        }
-                        Err(e) => {
-                            error!("Updating the clip resulted in {:?}", e);
-                        }
-                    }
-                } else {
-                    error!("No clip with id {} exists", clip_id);
-                }
+                db::edit_clip(&conn, clip_id, description, phrase);
             }
-            cli::Clip::List { btfm_data_dir } => {
-                let conn =
-                    SqliteConnection::establish(btfm_data_dir.join(DB_NAME).to_str().unwrap())
-                        .expect("Unabled to connect to database");
-                embedded_migrations::run(&conn).expect("Failed to run database migrations!");
-                let clips = schema::clips::table
-                    .load::<models::Clip>(&conn)
-                    .expect("Database query failed");
-                for clip in clips {
+
+            cli::Clip::List {} => {
+                for clip in db::all_clips(&conn) {
                     println!("{:?}", clip);
                 }
             }
-            cli::Clip::Remove {
-                btfm_data_dir,
-                clip_id,
-            } => {
-                let conn =
-                    SqliteConnection::establish(btfm_data_dir.join(DB_NAME).to_str().unwrap())
-                        .expect("Unabled to connect to database");
-                embedded_migrations::run(&conn).expect("Failed to run database migrations!");
+
+            cli::Clip::Remove { clip_id } => {
                 match diesel::delete(schema::clips::table.filter(schema::clips::id.eq(clip_id)))
                     .execute(&conn)
                 {

@@ -1,6 +1,6 @@
 [package]
 name = "btfm"
-version = "0.6.0"
+version = "0.7.0"
 authors = ["Jeremy Cline", "Randy Barlow", "Brotivator"]
 edition = "2018"
 description = "A Discord bot that plays audio clips based on voice chat"
@@ -9,13 +9,16 @@ license = "GPL-2.0-or-later"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-deepspeech = "0.7"
+tokio = { "version" = "1", features=["full"] }
+deepspeech = "0.9"
 structopt = "0.3"
 log = "0.4"
 stderrlog = "0.4"
 chrono = "0.4"
+rand_core = "0.5"
 rand = "0.7"
 diesel_migrations = "1"
+songbird = "0.1"
 
 [dependencies.audrey]
 features = ["wav"]
@@ -26,10 +29,8 @@ features = ["sqlite", "chrono"]
 version = "1"
 
 [dependencies.serenity]
-features = ["cache", "framework", "gateway", "standard_framework", "http", "native_tls_backend", "voice", "utils"]
-version = "0.8"
-git = "https://github.com/serenity-rs/serenity.git"
-rev = "9ad83c4d5a9b26d49e1352e64bfae7dcd41bbeba"
+version = "0.10"
+features = ["cache", "framework", "gateway", "standard_framework", "http", "rustls_backend", "voice", "utils"]
 
 [dev-dependencies]
 rand = {version = "0.7", features = ["small_rng"]}

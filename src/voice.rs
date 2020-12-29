@@ -1,26 +1,23 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-use std::cmp::Ordering;
-use std::collections::HashMap;
-use std::io::Cursor;
+use std::io::{Cursor, Write};
 use std::io::{Seek, SeekFrom};
 use std::path::PathBuf;
-use std::sync::mpsc;
 use std::sync::Arc;
-use std::thread;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
+use std::{collections::HashMap, process::Stdio};
 
 use audrey::hound;
 use audrey::read::Reader;
-use audrey::sample::interpolate::{Converter, Linear};
-use audrey::sample::signal::{from_iter, Signal};
 use chrono::NaiveDateTime;
 use deepspeech::Model;
 use diesel::prelude::*;
 use log::{debug, error, info, trace, warn};
 use rand::prelude::*;
+
 use serenity::{
-    client::{bridge::voice::ClientVoiceManager, Context, EventHandler},
+    async_trait,
+    client::{Context, EventHandler},
     http::client::Http,
     model::{
         gateway::Ready,
@@ -28,17 +25,17 @@ use serenity::{
         voice::VoiceState,
     },
     prelude::*,
-    voice,
 };
 
-use crate::models;
-use crate::schema;
+use songbird::{
+    input::Input,
+    model::payload::{ClientConnect, ClientDisconnect, Speaking},
+    Call, CoreEvent, Event, EventContext, EventHandler as VoiceEventHandler,
+};
+
+use crate::db;
 use crate::DB_NAME;
 
-pub struct VoiceManager;
-impl TypeMapKey for VoiceManager {
-    type Value = Arc<Mutex<ClientVoiceManager>>;
-}
 pub struct HttpClient;
 impl TypeMapKey for HttpClient {
     type Value = Arc<serenity::CacheAndHttp>;
@@ -52,6 +49,8 @@ pub struct BtfmData {
     channel_id: ChannelId,
     log_channel_id: Option<ChannelId>,
     rate_adjuster: f64,
+    users: HashMap<u32, User>,
+    ssrc_map: HashMap<u64, u32>,
 }
 impl TypeMapKey for BtfmData {
     type Value = Arc<Mutex<BtfmData>>;
@@ -72,8 +71,10 @@ impl BtfmData {
             deepspeech_external_scorer,
             guild_id: GuildId(guild_id),
             channel_id: ChannelId(channel_id),
-            log_channel_id: log_channel_id.map(|id| ChannelId(id)),
+            log_channel_id: log_channel_id.map(ChannelId),
             rate_adjuster,
+            users: HashMap::new(),
+            ssrc_map: HashMap::new(),
         }
     }
 }
@@ -90,37 +91,54 @@ impl BtfmData {
 /// # Returns
 ///
 /// true if it created a new connection, false otherwise.
-fn manage_voice_channel(context: &Context) -> bool {
-    let manager_lock = context
-        .data
-        .read()
-        .get::<VoiceManager>()
-        .cloned()
-        .expect("Expected VoiceManager in TypeMap");
-    let mut manager = manager_lock.lock();
+async fn manage_voice_channel(context: &Context) -> bool {
+    let manager = songbird::get(context)
+        .await
+        .expect("Songbird client missing")
+        .clone();
 
     let btfm_data_lock = context
         .data
         .read()
+        .await
         .get::<BtfmData>()
         .cloned()
         .expect("Expected BtfmData in TypeMap");
-    let btfm_data = btfm_data_lock.lock();
+    let btfm_data = btfm_data_lock.lock().await;
 
-    if let Ok(channel) = context.http.get_channel(*btfm_data.channel_id.as_u64()) {
+    if let Ok(channel) = context
+        .http
+        .get_channel(*btfm_data.channel_id.as_u64())
+        .await
+    {
         match channel.guild() {
-            Some(guild_channel_lock) => {
-                let guild_channel = guild_channel_lock.read();
-                if let Ok(members) = guild_channel.members(&context.cache) {
-                    if members.iter().find(|m| !m.user.read().bot).is_none() {
-                        manager.remove(btfm_data.guild_id);
-                    } else if manager.get(&btfm_data.guild_id).is_none() {
-                        if let Some(handler) =
-                            manager.join(&btfm_data.guild_id, &btfm_data.channel_id)
-                        {
-                            handler.listen(Some(Box::new(Receiver::new(context.data.clone()))));
-                            handler.play(hello_there(&btfm_data, "hello"));
-                            return true;
+            Some(guild_channel) => {
+                if let Ok(members) = guild_channel.members(&context.cache).await {
+                    if members.iter().find(|m| !m.user.bot).is_none() {
+                        if let Err(e) = manager.remove(btfm_data.guild_id).await {
+                            info!("Failed to remove guild? {:?}", e);
+                        }
+                    } else if manager.get(btfm_data.guild_id).is_none() {
+                        let (handler_lock, result) =
+                            manager.join(btfm_data.guild_id, btfm_data.channel_id).await;
+                        if result.is_ok() {
+                            let mut handler = handler_lock.lock().await;
+                            handler.add_global_event(
+                                CoreEvent::SpeakingUpdate.into(),
+                                Receiver::new(context.data.clone(), handler_lock.clone()),
+                            );
+                            handler.add_global_event(
+                                CoreEvent::VoicePacket.into(),
+                                Receiver::new(context.data.clone(), handler_lock.clone()),
+                            );
+                            handler.add_global_event(
+                                CoreEvent::ClientConnect.into(),
+                                Receiver::new(context.data.clone(), handler_lock.clone()),
+                            );
+                            handler.add_global_event(
+                                CoreEvent::ClientDisconnect.into(),
+                                Receiver::new(context.data.clone(), handler_lock.clone()),
+                            );
                         } else {
                             error!(
                                 "Unable to join {:?} on {:?}",
@@ -147,32 +165,21 @@ fn manage_voice_channel(context: &Context) -> bool {
 }
 
 /// Return an AudioSource to greet a new user (or the channel at large).
-///
-/// If the data directory doesn't contain a custom greeting file, the sound of
-/// silence is returned. This is important because Discord doesn't seem
-/// to send audio until the bot plays something.
-fn hello_there(btfm_data: &BtfmData, event_name: &str) -> Box<dyn voice::AudioSource> {
+async fn hello_there(btfm_data: &BtfmData, event_name: &str) -> Input {
     let hello = btfm_data.data_dir.join(event_name);
-    if let Err(metadata) = hello.metadata() {
-        info!(
-            "Playing silence instead of custom audio for event {}: {:?}",
-            event_name, metadata
-        );
-        let sound_of_silence = Cursor::new(&[0xF8, 0xFF, 0xFE]);
-        voice::opus(true, sound_of_silence)
-    } else {
-        voice::ffmpeg(hello).unwrap()
-    }
+    songbird::ffmpeg(hello).await.unwrap()
 }
 
 pub struct Handler;
+
+#[async_trait]
 impl EventHandler for Handler {
-    fn ready(&self, context: Context, ready: Ready) {
+    async fn ready(&self, context: Context, ready: Ready) {
         info!("Connected as {}", ready.user.name);
-        manage_voice_channel(&context);
+        manage_voice_channel(&context).await;
     }
 
-    fn voice_state_update(
+    async fn voice_state_update(
         &self,
         context: Context,
         guild_id: Option<GuildId>,
@@ -184,28 +191,26 @@ impl EventHandler for Handler {
         }
 
         debug!("voice_state_update: old={:?}  new={:?}", old, new);
-        if manage_voice_channel(&context) {
+        if manage_voice_channel(&context).await {
             return;
         }
 
-        let manager_lock = context
-            .data
-            .read()
-            .get::<VoiceManager>()
-            .cloned()
-            .expect("Expected VoiceManager in TypeMap");
-        let mut manager = manager_lock.lock();
-
+        let manager = songbird::get(&context)
+            .await
+            .expect("Songbird client missing")
+            .clone();
         let btfm_data_lock = context
             .data
             .read()
+            .await
             .get::<BtfmData>()
             .cloned()
             .expect("Expected BtfmData in TypeMap");
-        let btfm_data = btfm_data_lock.lock();
+        let btfm_data = btfm_data_lock.lock().await;
 
-        if let Some(handler) = manager.get_mut(btfm_data.guild_id) {
+        if let Some(locked_handler) = manager.get(btfm_data.guild_id) {
             // This event pertains to the channel we care about.
+            let mut handler = locked_handler.lock().await;
             if Some(btfm_data.channel_id) == new.channel_id {
                 match old {
                     Some(old_state) => {
@@ -214,21 +219,21 @@ impl EventHandler for Handler {
                         // with muting
                         if old_state.self_deaf != new.self_deaf && new.self_deaf {
                             debug!("Someone deafened themselves in a channel we care about");
-                            handler.play(hello_there(&btfm_data, "deaf"));
+                            handler.play_source(hello_there(&btfm_data, "deaf").await);
                         } else if old_state.self_deaf != new.self_deaf && !new.self_deaf {
                             debug!("Someone un-deafened themselves in a channel we care about");
-                            handler.play(hello_there(&btfm_data, "undeaf"));
+                            handler.play_source(hello_there(&btfm_data, "undeaf").await);
                         } else if old_state.self_mute != new.self_mute && new.self_mute {
                             debug!("Someone muted in the channel we care about");
-                            handler.play(hello_there(&btfm_data, "mute"));
+                            handler.play_source(hello_there(&btfm_data, "mute").await);
                         } else if old_state.self_mute != new.self_mute && !new.self_mute {
                             debug!("Someone un-muted in the channel we care about");
-                            handler.play(hello_there(&btfm_data, "unmute"));
+                            handler.play_source(hello_there(&btfm_data, "unmute").await);
                         }
                     }
                     None => {
                         debug!("User just joined our channel");
-                        handler.play(hello_there(&btfm_data, "hello"));
+                        handler.play_source(hello_there(&btfm_data, "hello").await);
                         return;
                     }
                 }
@@ -237,159 +242,226 @@ impl EventHandler for Handler {
     }
 }
 
-#[derive(Eq)]
-struct VoicePacket {
-    timestamp: u32,
-    stereo: bool,
-    data: Vec<i16>,
+/// Convert the raw audio to text.
+fn voice_to_text(
+    deepspeech_model: PathBuf,
+    deepspeech_scorer: Option<PathBuf>,
+    voice: Vec<i16>,
+) -> String {
+    let mut deepspeech_model =
+        Model::load_from_files(&deepspeech_model).expect("Unable to load deepspeech model");
+    if let Some(scorer) = &deepspeech_scorer {
+        deepspeech_model.enable_external_scorer(scorer).unwrap();
+    }
+    info!("Successfully loaded voice recognition model");
+
+    let audio_buffer = packets_to_wav(voice, deepspeech_model.get_sample_rate() as u32);
+    let result = deepspeech_model.speech_to_text(&audio_buffer).unwrap();
+    info!("STT thinks someone said \"{}\"", result);
+    result
 }
 
-impl VoicePacket {
-    fn new(timestamp: u32, stereo: bool, data: &[i16]) -> VoicePacket {
-        let mut _data: Vec<i16> = Vec::new();
-        _data.extend_from_slice(data);
-        VoicePacket {
-            timestamp,
-            stereo,
-            data: _data,
-        }
-    }
-}
+/// For a given text, select a audio clip to play.
+///
+/// This includes rate-limiting and random selection when multiple clips match.
+fn text_to_clip(data_dir: PathBuf, rate_adjuster: f64, result: &str) -> Option<PathBuf> {
+    let conn = SqliteConnection::establish(data_dir.join(DB_NAME).to_str().unwrap())
+        .expect("Unabled to connect to database");
+    let mut rng = rand::thread_rng();
+    let current_time = NaiveDateTime::from_timestamp(
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("It's time to check your system clock")
+            .as_secs() as i64,
+        0,
+    );
 
-impl PartialOrd for VoicePacket {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.timestamp.partial_cmp(&other.timestamp)
+    if result.contains("excuse me") {
+        info!("Not rate limiting clip since someone was so polite");
+    } else if rate_limit(
+        db::last_play_time(&conn),
+        current_time,
+        rate_adjuster,
+        &mut rng,
+    ) {
+        return None;
     }
-}
 
-impl PartialEq for VoicePacket {
-    fn eq(&self, other: &Self) -> bool {
-        self.timestamp == other.timestamp
-    }
+    let clip = db::choose_clip(&conn, &mut rng, result);
+    clip.map(|c| data_dir.join(c.audio_file))
 }
 
 struct User {
-    packet_buffer: mpsc::Sender<VoicePacket>,
+    _packet_buffer: Mutex<Vec<i16>>,
 }
 
 impl User {
-    pub fn new(client_data: Arc<RwLock<TypeMap>>) -> User {
-        let (sender, receiver) = mpsc::channel::<VoicePacket>();
-        // Spawn a thread to buffer audio for the user and pre-process it for recognition
-        thread::Builder::new()
-            .name("user_voice_buffer".to_string())
-            .spawn(move || {
-                let btfm_data_lock = client_data
-                    .read()
-                    .get::<BtfmData>()
-                    .cloned()
-                    .expect("Expected BtfmData in TypeMap");
-                let btfm_data = btfm_data_lock.lock();
-                let mut deepspeech_model = Model::load_from_files(&btfm_data.deepspeech_model)
-                    .expect("Unable to load deepspeech model");
-                if let Some(scorer) = &btfm_data.deepspeech_external_scorer {
-                    deepspeech_model.enable_external_scorer(scorer)
-                }
-                drop(btfm_data);
-                drop(btfm_data_lock);
-                info!("Successfully voice recognition model");
-
-                let timeout = Duration::from_secs(1);
-                'outer: loop {
-                    let mut voice_packets = Vec::<VoicePacket>::new();
-                    loop {
-                        match receiver.recv_timeout(timeout) {
-                            Ok(packet) => voice_packets.push(packet),
-                            Err(mpsc::RecvTimeoutError::Timeout) => {
-                                if voice_packets.is_empty() {
-                                    continue;
-                                }
-                                let audio_buffer = packets_to_wav(voice_packets);
-                                let audio_buffer = interpolate(audio_buffer, deepspeech_model.get_sample_rate() as u32);
-                                let result = deepspeech_model.speech_to_text(&audio_buffer).unwrap();
-                                info!("STT thinks someone said \"{}\"", result);
-                                play_clip(Arc::clone(&client_data), &result);
-                                continue 'outer;
-                            }
-                            Err(mpsc::RecvTimeoutError::Disconnected) => {
-                                info!("User's voice buffer thread got a disconnect and is shutting down");
-                                break 'outer;
-                            }
-                        }
-                    }
-                }
-            })
-            .unwrap();
-
+    pub fn new() -> User {
         User {
-            packet_buffer: sender,
+            _packet_buffer: Mutex::new(Vec::new()),
         }
+    }
+}
+
+impl User {
+    pub async fn push(&mut self, audio: &[i16]) {
+        let mut buf = self._packet_buffer.lock().await;
+        buf.extend(audio);
+    }
+
+    pub async fn reset(&mut self) -> Vec<i16> {
+        let mut voice_data = self._packet_buffer.lock().await;
+        let cloned_data = voice_data.clone();
+        voice_data.clear();
+        cloned_data
     }
 }
 
 pub struct Receiver {
-    users: HashMap<u32, User>,
-    ssrc_map: HashMap<u64, u32>,
     client_data: Arc<RwLock<TypeMap>>,
+    locked_call: Arc<Mutex<Call>>,
 }
 
 impl Receiver {
-    pub fn new(client_data: Arc<RwLock<TypeMap>>) -> Receiver {
+    pub fn new(client_data: Arc<RwLock<TypeMap>>, locked_call: Arc<Mutex<Call>>) -> Receiver {
         Receiver {
-            users: HashMap::new(),
-            ssrc_map: HashMap::new(),
             client_data,
+            locked_call,
         }
     }
 }
 
-impl voice::AudioReceiver for Receiver {
-    fn speaking_update(&mut self, ssrc: u32, user_id: u64, speaking: bool) {
-        debug!("Got speaking update ({}) for {}", speaking, user_id);
-        self.ssrc_map.entry(user_id).or_insert(ssrc);
-    }
-
-    fn client_connect(&mut self, ssrc: u32, user_id: u64) {
-        debug!("New user ({}) connected", user_id);
-        self.ssrc_map.entry(user_id).or_insert(ssrc);
-    }
-
-    fn client_disconnect(&mut self, user_id: u64) {
-        debug!("User ({}) disconnected", user_id);
-        if let Some(ssrc) = self.ssrc_map.remove(&user_id) {
-            self.users.remove(&ssrc);
-            debug!("Dropped voice buffer for {}", user_id);
-        }
-    }
-
-    fn voice_packet(
-        &mut self,
-        _ssrc: u32,
-        _sequence: u16,
-        _timestamp: u32,
-        _stereo: bool,
-        _data: &[i16],
-        _compressed_size: usize,
-    ) {
-        trace!(
-            "Received voice packet from ssrc {}, sequence {}, timestamp {}",
-            _ssrc,
-            _sequence,
-            _timestamp
-        );
-        let client_data = Arc::clone(&self.client_data);
-        let users = &mut self.users;
-        let user = users.entry(_ssrc).or_insert_with(|| User::new(client_data));
-        match user
-            .packet_buffer
-            .send(VoicePacket::new(_timestamp, _stereo, _data))
-        {
-            Ok(_) => {}
-            Err(e) => {
-                error!("Error pushing audio to user buffer: {:?}", e);
-                self.users.remove(&_ssrc).unwrap();
+#[async_trait]
+impl VoiceEventHandler for Receiver {
+    async fn act(&self, context: &EventContext<'_>) -> Option<Event> {
+        match context {
+            EventContext::SpeakingStateUpdate(Speaking {
+                speaking,
+                ssrc,
+                user_id,
+                ..
+            }) => {
+                debug!("Got speaking update ({:?}) for {:?}", speaking, user_id);
+                let locked_btfm_data = Arc::clone(&self.client_data)
+                    .read()
+                    .await
+                    .get::<BtfmData>()
+                    .cloned()
+                    .expect("Expected voice manager");
+                let mut btfm_data = locked_btfm_data.lock().await;
+                if let Some(user_id) = user_id {
+                    btfm_data.ssrc_map.entry(user_id.0).or_insert(*ssrc);
+                }
             }
+
+            EventContext::SpeakingUpdate { ssrc, speaking } => {
+                debug!("SSRC {:?} speaking state update to {:?}", ssrc, speaking);
+                if !speaking {
+                    let http_and_cache = Arc::clone(&self.client_data)
+                        .read()
+                        .await
+                        .get::<HttpClient>()
+                        .cloned()
+                        .expect("Expected HttpClient in TypeMap");
+
+                    let locked_btfm_data = Arc::clone(&self.client_data)
+                        .read()
+                        .await
+                        .get::<BtfmData>()
+                        .cloned()
+                        .expect("Expected voice manager");
+                    let mut btfm_data = locked_btfm_data.lock().await;
+                    let deepspeech_model = btfm_data.deepspeech_model.clone();
+                    let data_dir = btfm_data.data_dir.clone();
+                    let rate_adjuster = btfm_data.rate_adjuster;
+                    let deepspeech_scorer = btfm_data.deepspeech_external_scorer.clone();
+                    if let Some(user) = btfm_data.users.get_mut(ssrc) {
+                        let voice_data = user.reset().await;
+                        let text = tokio::task::spawn_blocking(|| {
+                            voice_to_text(deepspeech_model, deepspeech_scorer, voice_data)
+                        });
+                        if let Ok(text) = text.await {
+                            let msg = format!("Bot heard \"{:}\"", &text);
+                            log_event_to_channel(
+                                btfm_data.log_channel_id,
+                                &http_and_cache.http,
+                                &msg,
+                            )
+                            .await;
+
+                            let clip = tokio::task::spawn_blocking(move || {
+                                text_to_clip(data_dir, rate_adjuster, &text)
+                            });
+                            if let Ok(Some(clip)) = clip.await {
+                                let source = songbird::ffmpeg(clip).await.unwrap();
+                                let mut call = self.locked_call.lock().await;
+                                call.play_source(source);
+                            }
+                        }
+                    }
+                }
+            }
+
+            EventContext::VoicePacket { audio, packet, .. } => {
+                trace!(
+                    "Received voice packet from ssrc {}, sequence {}",
+                    packet.ssrc,
+                    packet.sequence.0,
+                );
+                let locked_client_data = Arc::clone(&self.client_data)
+                    .read()
+                    .await
+                    .get::<BtfmData>()
+                    .cloned()
+                    .expect("Expected voice manager");
+                let mut client_data = locked_client_data.lock().await;
+
+                let user = client_data
+                    .users
+                    .entry(packet.ssrc)
+                    .or_insert_with(User::new);
+
+                if let Some(audio) = audio {
+                    user.push(audio).await;
+                } else {
+                    error!("RTP packet event received, but there was no audio. Decode support may not be enabled?");
+                }
+            }
+
+            EventContext::ClientConnect(ClientConnect {
+                audio_ssrc,
+                user_id,
+                ..
+            }) => {
+                debug!("New user ({}) connected", user_id);
+                let locked_btfm_data = Arc::clone(&self.client_data)
+                    .read()
+                    .await
+                    .get::<BtfmData>()
+                    .cloned()
+                    .expect("Expected voice manager");
+                let mut btfm_data = locked_btfm_data.lock().await;
+                btfm_data.ssrc_map.entry(user_id.0).or_insert(*audio_ssrc);
+            }
+            EventContext::ClientDisconnect(ClientDisconnect { user_id, .. }) => {
+                debug!("User ({}) disconnected", user_id);
+                let locked_btfm_data = Arc::clone(&self.client_data)
+                    .read()
+                    .await
+                    .get::<BtfmData>()
+                    .cloned()
+                    .expect("Expected voice manager");
+                let mut btfm_data = locked_btfm_data.lock().await;
+
+                if let Some(ssrc) = btfm_data.ssrc_map.remove(&user_id.0) {
+                    btfm_data.users.remove(&ssrc);
+                    debug!("Dropped voice buffer for {}", user_id);
+                }
+            }
+            _ => {}
         }
+
+        None
     }
 }
 
@@ -397,66 +469,63 @@ impl voice::AudioReceiver for Receiver {
 ///
 /// This expects that the voice packets are all stereo, 16 bits per sample, and at
 /// sampled at 48kHz. This is what Discord has documented it uses.
-fn packets_to_wav(mut voice_packets: Vec<VoicePacket>) -> Cursor<Vec<u8>> {
-    assert!(voice_packets.iter().all(|p| p.stereo));
-    voice_packets.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Less));
-    let voice_data: Vec<i16> = voice_packets
-        .into_iter()
-        .map(|p| p.data)
-        .flatten()
-        .collect();
+fn packets_to_wav(voice_data: Vec<i16>, target_sample: u32) -> Vec<i16> {
     let data = Vec::<u8>::new();
     let mut cursor = Cursor::new(data);
 
-    // deepspeech-rs wants mono audio, but Discord sends stereo. In my
-    // incredibly in-depth and scientic research, both channels are
-    // identical so just throw out one channel.
     let wavspec = hound::WavSpec {
-        channels: 1,
+        channels: 2,
         sample_rate: 48_000,
         bits_per_sample: 16,
         sample_format: hound::SampleFormat::Int,
     };
     let mut writer = hound::WavWriter::new(&mut cursor, wavspec).unwrap();
-    let mut i16_writer = writer.get_i16_writer((voice_data.len() / 2) as u32);
-    for sample in voice_data.into_iter().step_by(2) {
+    let mut i16_writer = writer.get_i16_writer(voice_data.len() as u32);
+    for sample in voice_data.into_iter() {
         i16_writer.write_sample(sample);
     }
     i16_writer.flush().unwrap();
     drop(writer);
     cursor.seek(SeekFrom::Start(0)).unwrap();
-    cursor
-}
 
-/// Interpolate the wav to the sample rate used by the deepspeech model.
-fn interpolate<F>(wav: F, target_hz: u32) -> Vec<i16>
-where
-    F: std::io::Read,
-    F: std::io::Seek,
-{
-    let mut reader = Reader::new(wav).unwrap();
-    let description = reader.description();
+    // Convert audio to mono, at the sample rate of the deepspeech model, and trim silence
+    // from the clip via ffmpeg. This is pretty hacky, but it works okay and we're not going
+    // to Mars here.
+    let mut ffmpeg = std::process::Command::new("ffmpeg")
+        .args(&[
+            "-i pipe:",
+            "-af silenceremove=1:0:-50dB",
+            format!("-ar {}", target_sample).as_str(),
+            "-ac 1",
+            "-f wav",
+            "-",
+        ])
+        .stdout(Stdio::piped())
+        .stdin(Stdio::piped())
+        .spawn()
+        .expect("ffmpeg failed");
 
-    let audio_buffer: Vec<_> = if description.sample_rate() == target_hz {
-        reader.samples().map(|s| s.unwrap()).collect()
-    } else {
-        let interpolator = Linear::new([0i16], [0]);
-        let conv = Converter::from_hz_to_hz(
-            from_iter(reader.samples::<i16>().map(|s| [s.unwrap()])),
-            interpolator,
-            description.sample_rate() as f64,
-            target_hz as f64,
-        );
-        conv.until_exhausted().map(|v| v[0]).collect()
-    };
-    audio_buffer
+    {
+        let stdin = ffmpeg
+            .stdin
+            .as_mut()
+            .expect("Unable to communicate with ffmpeg");
+        stdin
+            .write_all(cursor.get_ref())
+            .expect("Ffmpeg stdin could not be written to");
+    }
+
+    let output = ffmpeg.wait_with_output().expect("ffmpeg output failed");
+    let mut reader = Reader::new(Cursor::new(output.stdout)).unwrap();
+
+    reader.samples().map(|s| s.unwrap()).collect::<Vec<i16>>()
 }
 
 /// Return true if we should not play a clip (i.e., we are rate limited).
 ///
 /// # Arguments
 ///
-/// `clips` - A list of all clips we know about
+/// `last_play` - The time a clip was last played.
 /// `current_time` - The current time. Bet you didn't guess that.
 /// `rate_adjuster` - Play chance is 1 - e^(-x/rate_adjuster). With 256 this is a 20% chance
 ///                   after a minute, 50% after 3 minutes, and 69% after 5 minutes.
@@ -467,128 +536,43 @@ where
 ///
 /// true if a clip should not be played, or false if we should play a clip.
 fn rate_limit(
-    clips: &[models::Clip],
+    last_play: chrono::NaiveDateTime,
     current_time: chrono::NaiveDateTime,
     rate_adjuster: f64,
     rng: &mut dyn rand::RngCore,
 ) -> bool {
-    if let Some(last_play) = clips.iter().map(|c| &c.last_played).max() {
-        let since_last_play = current_time - *last_play;
-        debug!(
-            "It's been {:?} since the last time a clip was played",
-            since_last_play
-        );
-        let play_chance = 1.0 - (-since_last_play.num_seconds() as f64 / rate_adjuster).exp();
+    let since_last_play = current_time - last_play;
+    debug!(
+        "It's been {:?} since the last time a clip was played",
+        since_last_play
+    );
+    let play_chance = 1.0 - (-since_last_play.num_seconds() as f64 / rate_adjuster).exp();
+    info!(
+        "Clips have a {} percent chance (repeating of course) of being played",
+        play_chance * 100.0
+    );
+    let random_roll = rng.gen::<f64>();
+    if random_roll > play_chance {
         info!(
-            "Clips have a {} percent chance (repeating of course) of being played",
-            play_chance * 100.0
+            "Random roll of {} is higher than play chance {}; ignoring",
+            random_roll, play_chance,
         );
-        let random_roll = rng.gen::<f64>();
-        if random_roll > play_chance {
-            info!(
-                "Random roll of {} is higher than play chance {}; ignoring",
-                random_roll, play_chance,
-            );
-            return true;
-        }
+        return true;
     }
     false
 }
 
-/// Select an audio clip to play given the phrase detected.
-fn play_clip(client_data: Arc<RwLock<TypeMap>>, result: &str) {
-    let manager_lock = client_data
-        .read()
-        .get::<VoiceManager>()
-        .cloned()
-        .expect("Expected voice manager");
-
-    let http_and_cache = client_data
-        .read()
-        .get::<HttpClient>()
-        .cloned()
-        .expect("Expected HttpClient in TypeMap");
-
-    let btfm_data_lock = client_data
-        .read()
-        .get::<BtfmData>()
-        .cloned()
-        .expect("Expected BtfmData in TypeMap");
-    let btfm_data = btfm_data_lock.lock();
-    let conn = SqliteConnection::establish(btfm_data.data_dir.join(DB_NAME).to_str().unwrap())
-        .expect("Unabled to connect to database");
-    let clips = schema::clips::table
-        .load::<models::Clip>(&conn)
-        .expect("Database query failed");
-    let mut manager = manager_lock.lock();
-    let mut rng = rand::thread_rng();
-    if let Some(handler) = manager.get_mut(&btfm_data.guild_id) {
-        let current_time = NaiveDateTime::from_timestamp(
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("Check your system clock")
-                .as_secs() as i64,
-            0,
-        );
-
-        if result.contains("excuse me") {
-            info!("Not rate limiting clip since someone was so polite");
-        } else if rate_limit(&clips, current_time, btfm_data.rate_adjuster, &mut rng) {
-            let msg = format!("Bot heard \"{:}\", but is rate-limited.", result);
-            log_event_to_channel(btfm_data.log_channel_id, &http_and_cache.http, &msg);
-            return;
-        }
-
-        let mut potential_clips = Vec::new();
-        for clip in clips {
-            if result.contains(&clip.phrase) {
-                info!("Matched on '{}'", &clip.phrase);
-                potential_clips.push(clip);
-            }
-        }
-
-        let msg = format!(
-            "Bot heard \"{:}\" and there are {:} matching clips",
-            result,
-            potential_clips.len()
-        );
-        log_event_to_channel(btfm_data.log_channel_id, &http_and_cache.http, &msg);
-        if let Some(mut clip) = potential_clips.into_iter().choose(&mut rng) {
-            let source = voice::ffmpeg(btfm_data.data_dir.join(&clip.audio_file)).unwrap();
-            handler.play(source);
-            clip.plays += 1;
-            clip.last_played = current_time;
-            let filter = schema::clips::table.filter(schema::clips::id.eq(clip.id));
-            let update = diesel::update(filter).set(clip).execute(&conn);
-            match update {
-                Ok(rows_updated) => {
-                    if rows_updated != 1 {
-                        error!(
-                            "Update applied to {} rows which is not expected",
-                            rows_updated
-                        );
-                    } else {
-                        debug!("Updated the play count and last_played time successfully");
-                    }
-                }
-                Err(e) => {
-                    error!("Updating the clip resulted in {:?}", e);
-                }
-            }
-        }
-    } else {
-        panic!("Handler missing for guild");
-    }
-}
-
 /// Send the given message to an optional channel.
-fn log_event_to_channel(channel_id: Option<ChannelId>, http_client: &Arc<Http>, message: &str) {
+async fn log_event_to_channel(
+    channel_id: Option<ChannelId>,
+    http_client: &Arc<Http>,
+    message: &str,
+) {
     if let Some(channel_id) = channel_id {
-        let chan = http_client.get_channel(*channel_id.as_u64());
+        let chan = http_client.get_channel(*channel_id.as_u64()).await;
         if let Ok(chan) = chan {
             if let Some(chan) = chan.guild() {
-                let chan = chan.read();
-                if let Err(e) = chan.say(http_client, message) {
+                if let Err(e) = chan.say(http_client, message).await {
                     error!("Unable to send message to channel: {:?}", e);
                 }
             } else {
@@ -642,8 +626,7 @@ mod tests {
     }
 
     #[test]
-    fn test_rate_limit_no_clips() {
-        let clips = vec![];
+    fn test_rate_limit() {
         let current_time = NaiveDateTime::from_timestamp(
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -653,36 +636,9 @@ mod tests {
         );
         let mut rng = FakeRng(0);
 
-        assert_eq!(rate_limit(&clips, current_time, 256.0, &mut rng), false);
-    }
-
-    #[test]
-    fn test_packets_to_wav() {
-        let packets = vec![
-            VoicePacket::new(0, true, &[0, 0]),
-            VoicePacket::new(0, true, &[1, 1]),
-        ];
-        let wav = packets_to_wav(packets);
-
-        let reader = Reader::new(wav).unwrap();
-        let description = reader.description();
-        assert_eq!(description.channel_count(), 1);
-        assert_eq!(description.sample_rate(), 48_000);
-        assert_eq!(description.format(), audrey::Format::Wav);
-    }
-
-    #[test]
-    fn test_packets_sorted() {
-        let packets = vec![
-            VoicePacket::new(1, true, &[1, 1]),
-            VoicePacket::new(0, true, &[0, 0]),
-        ];
-        let wav = packets_to_wav(packets);
-
-        let mut reader = Reader::new(wav).unwrap();
         assert_eq!(
-            reader.samples().map(|s| s.unwrap()).collect::<Vec<i16>>(),
-            vec![0, 1]
+            rate_limit(current_time, current_time, 256.0, &mut rng),
+            false
         );
     }
 }

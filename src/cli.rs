@@ -5,14 +5,23 @@ use structopt::StructOpt;
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "btfm", about = "Start the btfm service, add audio clips, etc.")]
-pub enum Btfm {
+pub struct Btfm {
+    /// Path to the BTFM data directory where clips and the database is stored
+    #[structopt(long, parse(from_os_str), env = "BTFM_DATA_DIR")]
+    pub btfm_data_dir: PathBuf,
+    #[structopt(subcommand)]
+    pub command: Command,
+}
+
+#[derive(StructOpt, Debug)]
+pub enum Command {
     /// Run the bot service
     Run {
         /// Log verbosity (-v for warn, -vv for info, etc)
         #[structopt(short, long, parse(from_occurrences))]
         verbose: usize,
         /// The Discord API token.
-        #[structopt(long, env = "DISCORD_TOKEN")]
+        #[structopt(long, env = "DISCORD_TOKEN", hide_env_values = true)]
         discord_token: String,
         /// Path to the DeepSpeech model directory.
         #[structopt(long, parse(from_os_str), env = "DEEPSPEECH_MODEL")]
@@ -20,9 +29,6 @@ pub enum Btfm {
         /// Path to the optional DeepSpeech scorer (increases accuracy)
         #[structopt(long, parse(from_os_str), env = "DEEPSPEECH_SCORER")]
         deepspeech_scorer: Option<PathBuf>,
-        /// Path to the BTFM data directory where clips and the database is stored
-        #[structopt(long, parse(from_os_str), env = "BTFM_DATA_DIR")]
-        btfm_data_dir: PathBuf,
         /// Discord Channel ID to join.
         #[structopt(long, env = "CHANNEL_ID")]
         channel_id: u64,
@@ -44,9 +50,6 @@ pub enum Btfm {
 pub enum Clip {
     /// Add a new clip to the database
     Add {
-        /// Path to the BTFM data directory where clips and the database is stored
-        #[structopt(long, parse(from_os_str), env = "BTFM_DATA_DIR")]
-        btfm_data_dir: PathBuf,
         /// The phrase that triggers the audio clip
         #[structopt()]
         phrase: String,
@@ -59,8 +62,6 @@ pub enum Clip {
     },
     /// Edit an existing clip in the database
     Edit {
-        #[structopt(long, parse(from_os_str), env = "BTFM_DATA_DIR")]
-        btfm_data_dir: PathBuf,
         /// The clip ID (from "clip list")
         #[structopt()]
         clip_id: i32,
@@ -72,16 +73,9 @@ pub enum Clip {
         description: Option<String>,
     },
     /// List clips in the database
-    List {
-        /// Path to the BTFM data directory where clips and the database is stored
-        #[structopt(long, parse(from_os_str), env = "BTFM_DATA_DIR")]
-        btfm_data_dir: PathBuf,
-    },
+    List {},
     /// Remove clips from the database
     Remove {
-        /// Path to the BTFM data directory where clips and the database is stored
-        #[structopt(long, parse(from_os_str), env = "BTFM_DATA_DIR")]
-        btfm_data_dir: PathBuf,
         /// The clip ID (from "clip list")
         #[structopt()]
         clip_id: i32,
