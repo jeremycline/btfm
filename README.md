@@ -1,5 +1,8 @@
 # btfm
 
+![CI](https://github.com/jeremycline/btfm/workflows/CI/badge.svg?branch=main)
+![Security](https://github.com/jeremycline/btfm/workflows/Security%20audit/badge.svg?branch=main)
+
 [I don't know how, But They Found Me (BTFM)](https://www.youtube.com/watch?v=hslfuqhtn7A).
 
 btfm is a [Discord](https://discordapp.com) bot that listens on a voice channel for key phrases, and

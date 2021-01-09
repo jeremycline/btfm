@@ -1,12 +1,14 @@
-name: Pull request checks
+name: CI
 
 on:
   push:
     branches:
-      - master
+      - main
   pull_request:
     branches:
-      - master
+      - main
+  schedule:
+    - cron: "0 0 * * *"
 
 jobs:
   code_format:
@@ -33,6 +35,21 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           command: build
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install latest nightly
+        uses: actions-rs/toolchain@v1
+        with:
+            toolchain: stable
+      - name: Install cargo-audit
+        run: |
+          cargo install cargo-audit
+      - uses: actions-rs/cargo@v1
+        with:
+          command: audit
 
   clippy:
     runs-on: ubuntu-latest
