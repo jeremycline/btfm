@@ -22,7 +22,7 @@ songbird = "0.1"
 
 [dependencies.audrey]
 features = ["wav"]
-version = "0.2"
+version = "0.3"
 
 [dependencies.diesel]
 features = ["sqlite", "chrono"]
