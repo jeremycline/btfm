@@ -1658,9 +1658,9 @@ dependencies = [
 
 [[package]]
 name = "songbird"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19788327c0986aa79dfd60a3f174f84d0ccd43a4669ba304fda135ebca0bc938"
+checksum = "f6f1769451d1ca9e07a3b8a1450d486e76374331634e151a3f6ec78dae2afcc4"
 dependencies = [
  "async-trait",
  "async-tungstenite",
