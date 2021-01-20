@@ -19,6 +19,7 @@ rand_core = "0.5"
 rand = "0.7"
 diesel_migrations = "1"
 songbird = "0.1"
+byteorder = "1"
 
 [dependencies.audrey]
 features = ["wav"]

@@ -22,7 +22,7 @@ use btfm::{cli, db, schema, DB_NAME};
 
 embed_migrations!("migrations/");
 
-#[tokio::main]
+#[tokio::main(flavor = "multi_thread", worker_threads = 10)]
 async fn main() {
     let opts = cli::Btfm::from_args();
     let conn = SqliteConnection::establish(opts.btfm_data_dir.join(DB_NAME).to_str().unwrap())

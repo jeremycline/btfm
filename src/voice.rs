@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-use std::io::{Cursor, Write};
-use std::io::{Seek, SeekFrom};
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{collections::HashMap, process::Stdio};
+use std::{io::Cursor, path::PathBuf};
 
-use audrey::hound;
-use audrey::read::Reader;
+use byteorder::{ByteOrder, LittleEndian};
 use chrono::NaiveDateTime;
 use deepspeech::Model;
 use diesel::prelude::*;
 use log::{debug, error, info, trace, warn};
 use rand::prelude::*;
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
+use tokio::process::Command;
 
 use serenity::{
     async_trait,
@@ -243,22 +243,26 @@ impl EventHandler for Handler {
 }
 
 /// Convert the raw audio to text.
-fn voice_to_text(
+async fn voice_to_text(
     deepspeech_model: PathBuf,
     deepspeech_scorer: Option<PathBuf>,
     voice: Vec<i16>,
 ) -> String {
-    let mut deepspeech_model =
-        Model::load_from_files(&deepspeech_model).expect("Unable to load deepspeech model");
-    if let Some(scorer) = &deepspeech_scorer {
-        deepspeech_model.enable_external_scorer(scorer).unwrap();
-    }
-    info!("Successfully loaded voice recognition model");
+    let audio_buffer = packets_to_wav(voice, 16_000).await;
 
-    let audio_buffer = packets_to_wav(voice, deepspeech_model.get_sample_rate() as u32);
-    let result = deepspeech_model.speech_to_text(&audio_buffer).unwrap();
-    info!("STT thinks someone said \"{}\"", result);
-    result
+    let text = tokio::task::spawn_blocking(move || {
+        let mut deepspeech_model =
+            Model::load_from_files(&deepspeech_model).expect("Unable to load deepspeech model");
+        if let Some(scorer) = &deepspeech_scorer {
+            deepspeech_model.enable_external_scorer(scorer).unwrap();
+        }
+        info!("Successfully loaded voice recognition model");
+        let result = deepspeech_model.speech_to_text(&audio_buffer).unwrap();
+        info!("STT thinks someone said \"{}\"", result);
+        result
+    });
+
+    text.await.unwrap_or_else(|_| "".to_string())
 }
 
 /// For a given text, select a audio clip to play.
@@ -377,26 +381,19 @@ impl VoiceEventHandler for Receiver {
                     let deepspeech_scorer = btfm_data.deepspeech_external_scorer.clone();
                     if let Some(user) = btfm_data.users.get_mut(ssrc) {
                         let voice_data = user.reset().await;
-                        let text = tokio::task::spawn_blocking(|| {
-                            voice_to_text(deepspeech_model, deepspeech_scorer, voice_data)
-                        });
-                        if let Ok(text) = text.await {
-                            let msg = format!("Bot heard \"{:}\"", &text);
-                            log_event_to_channel(
-                                btfm_data.log_channel_id,
-                                &http_and_cache.http,
-                                &msg,
-                            )
+                        let text =
+                            voice_to_text(deepspeech_model, deepspeech_scorer, voice_data).await;
+                        let msg = format!("Bot heard \"{:}\"", &text);
+                        log_event_to_channel(btfm_data.log_channel_id, &http_and_cache.http, &msg)
                             .await;
 
-                            let clip = tokio::task::spawn_blocking(move || {
-                                text_to_clip(data_dir, rate_adjuster, &text)
-                            });
-                            if let Ok(Some(clip)) = clip.await {
-                                let source = songbird::ffmpeg(clip).await.unwrap();
-                                let mut call = self.locked_call.lock().await;
-                                call.play_source(source);
-                            }
+                        let clip = tokio::task::spawn_blocking(move || {
+                            text_to_clip(data_dir, rate_adjuster, &text)
+                        });
+                        if let Ok(Some(clip)) = clip.await {
+                            let source = songbird::ffmpeg(clip).await.unwrap();
+                            let mut call = self.locked_call.lock().await;
+                            call.play_source(source);
                         }
                     }
                 }
@@ -465,60 +462,86 @@ impl VoiceEventHandler for Receiver {
     }
 }
 
-/// Converts voice data to a wav and returns it as an in-memory file-like object.
+/// Converts voice data to the target freqency, mono, and apply some ffmpeg filters.
 ///
 /// This expects that the voice packets are all stereo, 16 bits per sample, and at
 /// sampled at 48kHz. This is what Discord has documented it uses.
-fn packets_to_wav(voice_data: Vec<i16>, target_sample: u32) -> Vec<i16> {
-    let data = Vec::<u8>::new();
+///
+/// Returns: Audio prepped for deepspeech.
+async fn packets_to_wav(voice_data: Vec<i16>, target_sample: u32) -> Vec<i16> {
+    let data = Vec::<u8>::with_capacity(voice_data.len() * 2);
     let mut cursor = Cursor::new(data);
-
-    let wavspec = hound::WavSpec {
-        channels: 2,
-        sample_rate: 48_000,
-        bits_per_sample: 16,
-        sample_format: hound::SampleFormat::Int,
-    };
-    let mut writer = hound::WavWriter::new(&mut cursor, wavspec).unwrap();
-    let mut i16_writer = writer.get_i16_writer(voice_data.len() as u32);
-    for sample in voice_data.into_iter() {
-        i16_writer.write_sample(sample);
-    }
-    i16_writer.flush().unwrap();
-    drop(writer);
-    cursor.seek(SeekFrom::Start(0)).unwrap();
-
     // Convert audio to mono, at the sample rate of the deepspeech model, and trim silence
     // from the clip via ffmpeg. This is pretty hacky, but it works okay and we're not going
     // to Mars here.
-    let mut ffmpeg = std::process::Command::new("ffmpeg")
+    let mut ffmpeg = Command::new("ffmpeg")
         .args(&[
-            "-i pipe:",
-            "-af silenceremove=1:0:-50dB",
-            format!("-ar {}", target_sample).as_str(),
-            "-ac 1",
-            "-f wav",
-            "-",
+            "-f",
+            "s16le",
+            "-ar",
+            "48000",
+            "-ac",
+            "2",
+            "-i",
+            "pipe:0",
+            "-f",
+            "s16le",
+            "-ar",
+            target_sample.to_string().as_str(),
+            "-ac",
+            "1",
+            "-af",
+            "silenceremove=1:0:-50dB",
+            "pipe:1",
         ])
         .stdout(Stdio::piped())
         .stdin(Stdio::piped())
+        .stderr(Stdio::null())
         .spawn()
-        .expect("ffmpeg failed");
+        .expect("Unable to spawn ffmpeg; is it installed?");
 
-    {
-        let stdin = ffmpeg
-            .stdin
-            .as_mut()
-            .expect("Unable to communicate with ffmpeg");
+    let mut stdin = ffmpeg.stdin.take().expect("Unable to get stdin for ffmpeg");
+    let mut stdout = ffmpeg
+        .stdout
+        .take()
+        .expect("Unable to get stdout for ffmpeg");
+
+    tokio::spawn(async move {
+        match ffmpeg.wait().await {
+            Ok(status) => {
+                info!("ffmpeg exited with {}", status);
+            }
+            Err(err) => {
+                error!("ffmpeg encountered an error: {:?}", err);
+            }
+        }
+    });
+
+    tokio::spawn(async move {
+        for sample in voice_data.iter() {
+            <Cursor<Vec<u8>> as byteorder::WriteBytesExt>::write_i16::<LittleEndian>(
+                &mut cursor,
+                *sample,
+            )
+            .unwrap();
+        }
+        let data = cursor.into_inner();
+        info!("writing {} bytes to ffmpeg", data.len());
         stdin
-            .write_all(cursor.get_ref())
-            .expect("Ffmpeg stdin could not be written to");
+            .write_all(&data)
+            .await
+            .expect("Failed to write to ffmpeg stdin");
+    });
+
+    let mut data: Vec<i16> = Vec::new();
+    loop {
+        let mut buf = [0; 2];
+        match stdout.read_exact(&mut buf).await {
+            Ok(_) => data.push(LittleEndian::read_i16(&buf)),
+            Err(_) => break,
+        }
     }
-
-    let output = ffmpeg.wait_with_output().expect("ffmpeg output failed");
-    let mut reader = Reader::new(Cursor::new(output.stdout)).unwrap();
-
-    reader.samples().map(|s| s.unwrap()).collect::<Vec<i16>>()
+    return data;
 }
 
 /// Return true if we should not play a clip (i.e., we are rate limited).
