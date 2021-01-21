@@ -1,0 +1,51 @@
+---
+name: Release
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install dependencies
+        run: |
+          curl -sOL https://github.com/mozilla/DeepSpeech/releases/download/v0.9.3/native_client.amd64.cpu.linux.tar.xz
+          unxz native_client.amd64.cpu.linux.tar.xz
+          tar -xf native_client.amd64.cpu.linux.tar
+          sudo cp libdeepspeech.so /usr/local/lib/
+          sudo ldconfig
+          sudo apt install -y libsqlite3-dev
+      - name: Create release build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release
+      - name: Create GitHub Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: ${{ github.ref }}
+          draft: false
+          prerelease: false
+      - name: Upload release build
+        id: upload_build
+        uses: action/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./target/release/btfm
+          asset_name: btfm-x86_64-unknown-linux-gnu
+          asset_content_type: application/octet-stream
+      - name: Publish to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        uses: actions-rs/cargo@v1
+        with:
+          command: publish
