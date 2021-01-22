@@ -51,6 +51,8 @@ pub struct BtfmData {
     rate_adjuster: f64,
     users: HashMap<u32, User>,
     ssrc_map: HashMap<u64, u32>,
+    // How many times the given user has joined the channel so we can give them rejoin messages.
+    user_history: HashMap<u64, u32>,
 }
 impl TypeMapKey for BtfmData {
     type Value = Arc<Mutex<BtfmData>>;
@@ -75,6 +77,7 @@ impl BtfmData {
             rate_adjuster,
             users: HashMap::new(),
             ssrc_map: HashMap::new(),
+            user_history: HashMap::new(),
         }
     }
 }
@@ -206,7 +209,7 @@ impl EventHandler for Handler {
             .get::<BtfmData>()
             .cloned()
             .expect("Expected BtfmData in TypeMap");
-        let btfm_data = btfm_data_lock.lock().await;
+        let mut btfm_data = btfm_data_lock.lock().await;
 
         if let Some(locked_handler) = manager.get(btfm_data.guild_id) {
             // This event pertains to the channel we care about.
@@ -234,9 +237,18 @@ impl EventHandler for Handler {
                     None => {
                         debug!("User just joined our channel");
                         handler.play_source(hello_there(&btfm_data, "hello").await);
-                        return;
+                        let join_count = btfm_data
+                            .user_history
+                            .entry(*new.user_id.as_u64())
+                            .or_insert(0);
+                        *join_count += 1;
+                        if *join_count > 1 {
+                            info!("Someone just rejoined; let them know how we feel");
+                            handler.play_source(hello_there(&btfm_data, "rejoin").await);
+                        }
                     }
                 }
+                info!("user_history={:?}", &btfm_data.user_history);
             }
         }
     }
