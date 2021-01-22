@@ -383,6 +383,9 @@ impl VoiceEventHandler for Receiver {
                         let voice_data = user.reset().await;
                         let text =
                             voice_to_text(deepspeech_model, deepspeech_scorer, voice_data).await;
+                        if text.trim().len() == 0 {
+                            return None;
+                        }
                         let msg = format!("Bot heard \"{:}\"", &text);
                         log_event_to_channel(btfm_data.log_channel_id, &http_and_cache.http, &msg)
                             .await;
