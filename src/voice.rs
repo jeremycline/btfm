@@ -395,7 +395,7 @@ impl VoiceEventHandler for Receiver {
                         let voice_data = user.reset().await;
                         let text =
                             voice_to_text(deepspeech_model, deepspeech_scorer, voice_data).await;
-                        if text.trim().len() == 0 {
+                        if text.is_empty() {
                             return None;
                         }
                         let msg = format!("Bot heard \"{:}\"", &text);
