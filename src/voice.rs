@@ -107,7 +107,7 @@ async fn manage_voice_channel(context: &Context) -> bool {
         .get::<BtfmData>()
         .cloned()
         .expect("Expected BtfmData in TypeMap");
-    let btfm_data = btfm_data_lock.lock().await;
+    let mut btfm_data = btfm_data_lock.lock().await;
 
     if let Ok(channel) = context
         .http
@@ -121,6 +121,7 @@ async fn manage_voice_channel(context: &Context) -> bool {
                         if let Err(e) = manager.remove(btfm_data.guild_id).await {
                             info!("Failed to remove guild? {:?}", e);
                         }
+                        btfm_data.user_history.clear();
                     } else if manager.get(btfm_data.guild_id).is_none() {
                         let (handler_lock, result) =
                             manager.join(btfm_data.guild_id, btfm_data.channel_id).await;
