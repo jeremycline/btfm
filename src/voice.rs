@@ -260,7 +260,7 @@ impl EventHandler for Handler {
                         if *join_count > 1 {
                             info!("Someone just rejoined; let them know how we feel");
                             let rng: f64 = rand::random();
-                            if 1 as f64 - (*join_count as f64 * 0.1).exp() > rng {
+                            if 1_f64 - (*join_count as f64 * 0.1).exp() > rng {
                                 hello_there(&btfm_data, "rejoin")
                                     .await
                                     .map(|s| Some(handler.play_source(s)));

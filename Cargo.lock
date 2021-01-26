@@ -175,7 +175,6 @@ dependencies = [
  "log 0.4.13",
  "rand 0.7.3",
  "rand_core 0.5.1",
- "rand_core 0.6.1",
  "serenity",
  "songbird",
  "stderrlog",
