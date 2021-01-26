@@ -169,9 +169,13 @@ async fn manage_voice_channel(context: &Context) -> bool {
 }
 
 /// Return an AudioSource to greet a new user (or the channel at large).
-async fn hello_there(btfm_data: &BtfmData, event_name: &str) -> Input {
+async fn hello_there(btfm_data: &BtfmData, event_name: &str) -> Option<Input> {
     let hello = btfm_data.data_dir.join(event_name);
-    songbird::ffmpeg(hello).await.unwrap()
+    if hello.exists() {
+        Some(songbird::ffmpeg(hello).await.unwrap())
+    } else {
+        None
+    }
 }
 
 pub struct Handler;
@@ -223,21 +227,31 @@ impl EventHandler for Handler {
                         // with muting
                         if old_state.self_deaf != new.self_deaf && new.self_deaf {
                             debug!("Someone deafened themselves in a channel we care about");
-                            handler.play_source(hello_there(&btfm_data, "deaf").await);
+                            hello_there(&btfm_data, "deaf")
+                                .await
+                                .map(|s| Some(handler.play_source(s)));
                         } else if old_state.self_deaf != new.self_deaf && !new.self_deaf {
                             debug!("Someone un-deafened themselves in a channel we care about");
-                            handler.play_source(hello_there(&btfm_data, "undeaf").await);
+                            hello_there(&btfm_data, "undeaf")
+                                .await
+                                .map(|s| Some(handler.play_source(s)));
                         } else if old_state.self_mute != new.self_mute && new.self_mute {
                             debug!("Someone muted in the channel we care about");
-                            handler.play_source(hello_there(&btfm_data, "mute").await);
+                            hello_there(&btfm_data, "mute")
+                                .await
+                                .map(|s| Some(handler.play_source(s)));
                         } else if old_state.self_mute != new.self_mute && !new.self_mute {
                             debug!("Someone un-muted in the channel we care about");
-                            handler.play_source(hello_there(&btfm_data, "unmute").await);
+                            hello_there(&btfm_data, "unmute")
+                                .await
+                                .map(|s| Some(handler.play_source(s)));
                         }
                     }
                     None => {
                         debug!("User just joined our channel");
-                        handler.play_source(hello_there(&btfm_data, "hello").await);
+                        hello_there(&btfm_data, "hello")
+                            .await
+                            .map(|s| Some(handler.play_source(s)));
                         let join_count = btfm_data
                             .user_history
                             .entry(*new.user_id.as_u64())
@@ -245,7 +259,12 @@ impl EventHandler for Handler {
                         *join_count += 1;
                         if *join_count > 1 {
                             info!("Someone just rejoined; let them know how we feel");
-                            handler.play_source(hello_there(&btfm_data, "rejoin").await);
+                            let rng: f64 = rand::random();
+                            if 1 as f64 - (*join_count as f64 * 0.1).exp() > rng {
+                                hello_there(&btfm_data, "rejoin")
+                                    .await
+                                    .map(|s| Some(handler.play_source(s)));
+                            }
                         }
                     }
                 }
