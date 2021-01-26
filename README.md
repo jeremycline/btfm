@@ -20,24 +20,54 @@ Set up your paths so that deepspeech can be found by the compiler (or drop it in
 
 Install make, autotools, libopus headers, libsqlite headers, libsodium headers, and the openssl headers.
 
-Create the data directory and database:
+Create the data directory where the audio clips and database are stored. For example:
 
 ```
-export BTFM_DATA_DIR=/some/dir
-export DATABASE_URL=$BTFM_DATA_DIR/btfm.sqlite3
-cargo install diesel_cli
-diesel setup
+mkdir /var/lib/btfm/
 ```
 
-To run, the following environment variables are required:
+Add clips and phrases with the ``btfm clip`` sub-commands:
 
-  * `BTFM_DATA_DIR`: Path to the data directory where btfm should store clips
-    and where the database is. A special "hello" audio file must be in the
-    root of this directory and is played on joins to the channel
-  * `DEEPSPEECH_MODEL`: Path to the deepspeech model.
-  * `DISCORD_TOKEN`: Your Discord API token.
-  * `CHANNEL_ID`: The Discord Channel ID to join when someone else joins.
-  * `GUILD_ID`: The Discord Guild ID being connected to.
+```
+btfm --btfm-data-dir /var/lib/btfm/ add "they found me" "I don't know how, but they found me..." run-for-it-marty.mp3
+```
+
+See ``btfm clip --help`` for available sub-commands and options.
+
+Start the bot with ``btfm run``. Parameters are accepted via CLI arguments or
+environment variables. For example, a systemd unit file to run the service
+under the "btfm" user (which should be able to read /var/lib/btfm/):
+```
+[Unit]
+Description=BTFM Discord bot
+After=network.target
+
+[Service]
+Type=simple
+User=btfm
+Group=btfm
+Environment="BTFM_DATA_DIR=/var/lib/btfm/"
+Environment="DEEPSPEECH_MODEL=/var/lib/btfm/deepspeech.pbmm"
+Environment="DEEPSPEECH_SCORER=/var/lib/btfm/deepspeech.scorer"
+Environment="DISCORD_TOKEN=<your-discord-api-token>"
+Environment="CHANNEL_ID=<the-voice-channel-id>"
+Environment="GUILD_ID=<the-guild-id>"
+ExecStart=/usr/local/bin/btfm run
+Restart=always
+RestartSec=60
+
+[Install]
+WantedBy=multi-user.target
+
+[Install]
+WantedBy=multi-user.target
+```
+
+See ``btfm run --help`` for command line arguments and documentation. To
+obtain the guild and channel ID, go to your Discord User Settings ->
+Appearance, and enable Developer Mode. You can then right-click on the server
+for and select "Copy ID" for the guild ID, and then right-click the voice
+channel you want the bot to watch and "Copy ID" that as well.
 
 
 ## Development environment
