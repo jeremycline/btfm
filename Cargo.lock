@@ -321,6 +321,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "dashmap"
+version = "4.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e77a43b28d0668df09411cb0bc9a8c2adc40f9a048afe863e05fd43251e8e39c"
+dependencies = [
+ "cfg-if 1.0.0",
+ "num_cpus",
+]
+
+[[package]]
 name = "dasp_frame"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -993,6 +1003,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "nix"
+version = "0.19.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b2ccba0cfe4fdf15982d1674c69b1fd80bad427d293849982668dfe454bd61f2"
+dependencies = [
+ "bitflags 1.2.1",
+ "cc",
+ "cfg-if 1.0.0",
+ "libc",
+]
+
+[[package]]
 name = "ntapi"
 version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1659,17 +1681,19 @@ dependencies = [
 
 [[package]]
 name = "songbird"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f6f1769451d1ca9e07a3b8a1450d486e76374331634e151a3f6ec78dae2afcc4"
+checksum = "ed1268c7dead3227f6a2f7dddfa1a7a2f8208ddbe7dcdf845cd754df1135724c"
 dependencies = [
  "async-trait",
  "async-tungstenite",
  "audiopus",
  "byteorder",
+ "dashmap",
  "discortp",
  "flume",
  "futures",
+ "nix",
  "parking_lot",
  "rand 0.8.2",
  "serde",
