@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{collections::HashMap, process::Stdio};
 use std::{io::Cursor, path::PathBuf};
+use std::{path::Path, sync::Arc};
 
 use byteorder::{ByteOrder, LittleEndian};
 use chrono::NaiveDateTime;
 use deepspeech::Model;
-use diesel::prelude::*;
 use log::{debug, error, info, trace, warn};
 use rand::prelude::*;
 use tokio::io::AsyncReadExt;
@@ -34,7 +33,6 @@ use songbird::{
 };
 
 use crate::db;
-use crate::DB_NAME;
 
 pub struct HttpClient;
 impl TypeMapKey for HttpClient {
@@ -53,11 +51,13 @@ pub struct BtfmData {
     ssrc_map: HashMap<u64, u32>,
     // How many times the given user has joined the channel so we can give them rejoin messages.
     user_history: HashMap<u64, u32>,
+    db: sqlx::Pool<sqlx::Sqlite>,
 }
 impl TypeMapKey for BtfmData {
     type Value = Arc<Mutex<BtfmData>>;
 }
 impl BtfmData {
+    #[allow(clippy::clippy::too_many_arguments)]
     pub fn new(
         data_dir: PathBuf,
         deepspeech_model: PathBuf,
@@ -66,6 +66,7 @@ impl BtfmData {
         channel_id: u64,
         log_channel_id: Option<u64>,
         rate_adjuster: f64,
+        db: sqlx::Pool<sqlx::Sqlite>,
     ) -> BtfmData {
         BtfmData {
             data_dir,
@@ -78,6 +79,7 @@ impl BtfmData {
             users: HashMap::new(),
             ssrc_map: HashMap::new(),
             user_history: HashMap::new(),
+            db,
         }
     }
 }
@@ -275,13 +277,11 @@ impl EventHandler for Handler {
 }
 
 /// Convert the raw audio to text.
-async fn voice_to_text(
+pub async fn voice_to_text(
     deepspeech_model: PathBuf,
     deepspeech_scorer: Option<PathBuf>,
-    voice: Vec<i16>,
+    audio_buffer: Vec<i16>,
 ) -> String {
-    let audio_buffer = packets_to_wav(voice, 16_000).await;
-
     let text = tokio::task::spawn_blocking(move || {
         let mut deepspeech_model =
             Model::load_from_files(&deepspeech_model).expect("Unable to load deepspeech model");
@@ -300,10 +300,12 @@ async fn voice_to_text(
 /// For a given text, select a audio clip to play.
 ///
 /// This includes rate-limiting and random selection when multiple clips match.
-fn text_to_clip(data_dir: PathBuf, rate_adjuster: f64, result: &str) -> Option<PathBuf> {
-    let conn = SqliteConnection::establish(data_dir.join(DB_NAME).to_str().unwrap())
-        .expect("Unabled to connect to database");
-    let mut rng = rand::thread_rng();
+async fn text_to_clip(
+    pool: &sqlx::SqlitePool,
+    data_dir: PathBuf,
+    rate_adjuster: f64,
+    result: &str,
+) -> Option<PathBuf> {
     let current_time = NaiveDateTime::from_timestamp(
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -315,16 +317,22 @@ fn text_to_clip(data_dir: PathBuf, rate_adjuster: f64, result: &str) -> Option<P
     if result.contains("excuse me") {
         info!("Not rate limiting clip since someone was so polite");
     } else if rate_limit(
-        db::last_play_time(&conn),
+        db::last_play_time(pool).await,
         current_time,
         rate_adjuster,
-        &mut rng,
+        &mut rand::thread_rng(),
     ) {
         return None;
     }
 
-    let clip = db::choose_clip(&conn, &mut rng, result);
-    clip.map(|c| data_dir.join(c.audio_file))
+    let clips = db::match_phrase(pool, result).await.unwrap();
+    let clip = clips.into_iter().choose(&mut rand::thread_rng());
+    if let Some(mut clip) = clip {
+        clip.mark_played(pool).await.unwrap();
+        Some(data_dir.join(clip.audio_file))
+    } else {
+        None
+    }
 }
 
 struct User {
@@ -413,6 +421,7 @@ impl VoiceEventHandler for Receiver {
                     let deepspeech_scorer = btfm_data.deepspeech_external_scorer.clone();
                     if let Some(user) = btfm_data.users.get_mut(ssrc) {
                         let voice_data = user.reset().await;
+                        let voice_data = discord_to_wav(voice_data, 16_000).await;
                         let text =
                             voice_to_text(deepspeech_model, deepspeech_scorer, voice_data).await;
                         if text.is_empty() {
@@ -422,10 +431,9 @@ impl VoiceEventHandler for Receiver {
                         log_event_to_channel(btfm_data.log_channel_id, &http_and_cache.http, &msg)
                             .await;
 
-                        let clip = tokio::task::spawn_blocking(move || {
-                            text_to_clip(data_dir, rate_adjuster, &text)
-                        });
-                        if let Ok(Some(clip)) = clip.await {
+                        let clip =
+                            text_to_clip(&btfm_data.db, data_dir, rate_adjuster, &text).await;
+                        if let Some(clip) = clip {
                             let source = songbird::ffmpeg(clip).await.unwrap();
                             let mut call = self.locked_call.lock().await;
                             call.play_source(source);
@@ -497,13 +505,62 @@ impl VoiceEventHandler for Receiver {
     }
 }
 
+/// Prepare a file for DeepSpeech
+pub async fn file_to_wav(audio: &Path, target_sample: i32) -> Vec<i16> {
+    let mut ffmpeg = Command::new("ffmpeg")
+        .args(&[
+            "-i",
+            audio.to_str().unwrap(),
+            "-acodec",
+            "pcm_s16le",
+            "-f",
+            "s16le",
+            "-ar",
+            target_sample.to_string().as_str(),
+            "-ac",
+            "1",
+            "pipe:1",
+        ])
+        .stdout(Stdio::piped())
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("Unable to spawn ffmpeg; is it installed?");
+
+    let mut stdout = ffmpeg
+        .stdout
+        .take()
+        .expect("Unable to get stdout for ffmpeg");
+
+    tokio::spawn(async move {
+        match ffmpeg.wait().await {
+            Ok(status) => {
+                info!("ffmpeg exited with {}", status);
+            }
+            Err(err) => {
+                error!("ffmpeg encountered an error: {:?}", err);
+            }
+        }
+    });
+
+    let mut data: Vec<i16> = Vec::new();
+    loop {
+        let mut buf = [0; 2];
+        match stdout.read_exact(&mut buf).await {
+            Ok(_) => data.push(LittleEndian::read_i16(&buf)),
+            Err(_) => break,
+        }
+    }
+    return data;
+}
+
 /// Converts voice data to the target freqency, mono, and apply some ffmpeg filters.
 ///
 /// This expects that the voice packets are all stereo, 16 bits per sample, and at
 /// sampled at 48kHz. This is what Discord has documented it uses.
 ///
 /// Returns: Audio prepped for deepspeech.
-async fn packets_to_wav(voice_data: Vec<i16>, target_sample: u32) -> Vec<i16> {
+async fn discord_to_wav(voice_data: Vec<i16>, target_sample: u32) -> Vec<i16> {
     let data = Vec::<u8>::with_capacity(voice_data.len() * 2);
     let mut cursor = Cursor::new(data);
     // Convert audio to mono, at the sample rate of the deepspeech model, and trim silence

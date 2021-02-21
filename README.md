@@ -12,9 +12,9 @@ plays audio clips into the channel in response.
 ## Setup
 
 Download the [deepspeech native_client build for your
-platform](https://github.com/mozilla/DeepSpeech/releases/tag/v0.7.0), along
+platform](https://github.com/mozilla/DeepSpeech/releases/tag/v0.9.3), along
 with the
-[acoustic model](https://github.com/mozilla/DeepSpeech/releases/download/v0.7.0/deepspeech-0.7.0-models.pbmm).
+[acoustic model](https://github.com/mozilla/DeepSpeech/releases/download/v0.9.3/deepspeech-0.9.3-models.pbmm).
 
 Set up your paths so that deepspeech can be found by the compiler (or drop it into /usr/local/lib/ and run ldconfig).
 

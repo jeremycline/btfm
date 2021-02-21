@@ -9,7 +9,7 @@ license = "GPL-2.0-or-later"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tokio = { "version" = "1", features=["full"] }
+tokio = { "version" = "1" }
 deepspeech = "0.9"
 structopt = "0.3"
 log = "0.4"
@@ -17,17 +17,14 @@ stderrlog = "0.4"
 chrono = "0.4"
 rand_core = "0.5"
 rand = "0.7"
-diesel_migrations = "1"
 songbird = "0.1"
 byteorder = "1"
+thiserror = "1.0"
+sqlx = {"version" = "0.5", features=["runtime-tokio-rustls", "sqlite", "chrono", "migrate", "macros"]}
 
 [dependencies.audrey]
 features = ["wav"]
 version = "0.3"
-
-[dependencies.diesel]
-features = ["sqlite", "chrono"]
-version = "1"
 
 [dependencies.serenity]
 version = "0.10"

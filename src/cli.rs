@@ -42,32 +42,46 @@ pub enum Command {
         #[structopt(short, long, default_value = "256", env = "RATE_ADJUSTER")]
         rate_adjuster: f64,
     },
+
+    /// Set a clip to trigger on a given phrase; this will create a new phrase.
+    /// To manage the association between existing phrases and a clip, use the phrase sub-command.
+    Trigger {
+        /// The clip ID (from "clip list")
+        #[structopt()]
+        clip_id: i64,
+        /// The phrase that triggers the audio clip
+        #[structopt()]
+        phrase: String,
+    },
+
     /// Manage audio clips for the bot
     Clip(Clip),
+    /// Manage phrases that trigger audio clips
+    Phrase(Phrase),
 }
 
 #[derive(StructOpt, Debug)]
 pub enum Clip {
     /// Add a new clip to the database
     Add {
-        /// The phrase that triggers the audio clip
-        #[structopt()]
-        phrase: String,
         /// A short description of the audio clip
         #[structopt()]
         description: String,
         /// The filename of the clip.
         #[structopt(parse(from_os_str))]
         file: PathBuf,
+        /// Path to the DeepSpeech model directory.
+        #[structopt(long, parse(from_os_str), env = "DEEPSPEECH_MODEL")]
+        deepspeech_model: PathBuf,
+        /// Path to the optional DeepSpeech scorer (increases accuracy)
+        #[structopt(long, parse(from_os_str), env = "DEEPSPEECH_SCORER")]
+        deepspeech_scorer: PathBuf,
     },
     /// Edit an existing clip in the database
     Edit {
         /// The clip ID (from "clip list")
         #[structopt()]
-        clip_id: i32,
-        /// The phrase that triggers the audio clip
-        #[structopt(short, long)]
-        phrase: Option<String>,
+        clip_id: i64,
         /// A short description of the audio clip
         #[structopt(short, long)]
         description: Option<String>,
@@ -78,6 +92,51 @@ pub enum Clip {
     Remove {
         /// The clip ID (from "clip list")
         #[structopt()]
-        clip_id: i32,
+        clip_id: i64,
+    },
+}
+
+#[derive(StructOpt, Debug)]
+pub enum Phrase {
+    /// Trigger a clip with an existing phrase
+    Trigger {
+        /// The clip ID (from "clip list")
+        #[structopt()]
+        clip_id: i64,
+        /// The phrase ID (from "phrase list")
+        #[structopt()]
+        phrase_id: i64,
+    },
+    /// Remove a phrase as a trigger for a clip
+    Untrigger {
+        /// The clip ID (from "clip list")
+        #[structopt()]
+        clip_id: i64,
+        /// The phrase ID (from "phrase list")
+        #[structopt()]
+        phrase_id: i64,
+    },
+    /// Add a new phrase to the database
+    Add {
+        /// A phrase that can be associated with clips to trigger them
+        #[structopt()]
+        phrase: String,
+    },
+    /// Edit an existing phrase in the database
+    Edit {
+        /// The phrase ID (from "phrase list")
+        #[structopt()]
+        phrase_id: i64,
+        /// The new phrase
+        #[structopt(short, long)]
+        phrase: String,
+    },
+    /// List phrases in the database
+    List {},
+    /// Remove phrases from the database
+    Remove {
+        /// The phrase ID (from "phrase list")
+        #[structopt()]
+        phrase_id: i64,
     },
 }

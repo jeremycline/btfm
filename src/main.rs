@@ -1,7 +1,4 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-
-#[macro_use]
-extern crate diesel_migrations;
 #[macro_use]
 extern crate log;
 extern crate stderrlog;
@@ -9,7 +6,6 @@ extern crate stderrlog;
 use std::fs;
 use std::sync::Arc;
 
-use diesel::prelude::*;
 use serenity::{client::Client, framework::StandardFramework, prelude::*};
 use songbird::{
     driver::{Config as DriverConfig, DecodeMode},
@@ -18,16 +14,25 @@ use songbird::{
 use structopt::StructOpt;
 
 use btfm::voice::{BtfmData, Handler, HttpClient};
-use btfm::{cli, db, schema, DB_NAME};
+use btfm::{cli, db, DB_NAME};
 
-embed_migrations!("migrations/");
+static MIGRATIONS: sqlx::migrate::Migrator = sqlx::migrate!("./migrations/");
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 10)]
 async fn main() {
     let opts = cli::Btfm::from_args();
-    let conn = SqliteConnection::establish(opts.btfm_data_dir.join(DB_NAME).to_str().unwrap())
-        .expect("Unabled to connect to database");
-    embedded_migrations::run(&conn).expect("Failed to run database migrations!");
+
+    let db_pool = sqlx::sqlite::SqlitePoolOptions::new()
+        .connect(opts.btfm_data_dir.join(DB_NAME).to_str().unwrap())
+        .await
+        .expect("Unable to connect to database");
+    match MIGRATIONS.run(&db_pool).await {
+        Ok(_) => {}
+        Err(e) => {
+            println!("Failed to migrate database: {}", e);
+            return;
+        }
+    }
 
     match opts.command {
         cli::Command::Run {
@@ -69,6 +74,7 @@ async fn main() {
                     channel_id,
                     log_channel_id,
                     rate_adjuster,
+                    db_pool,
                 ))));
             }
             let _ = client
@@ -81,43 +87,100 @@ async fn main() {
             cli::Clip::Add {
                 description,
                 file,
-                phrase,
+                deepspeech_model,
+                deepspeech_scorer,
             } => {
                 fs::create_dir_all(opts.btfm_data_dir.join("clips"))
                     .expect("Unable to create clips directory");
-                db::add_clip(&conn, &opts.btfm_data_dir, &file, &description, &phrase)
+                db::Clip::insert(
+                    &db_pool,
+                    &opts.btfm_data_dir,
+                    &file,
+                    &description,
+                    &deepspeech_model,
+                    &deepspeech_scorer,
+                )
+                .await
+                .unwrap();
             }
 
             cli::Clip::Edit {
                 clip_id,
                 description,
-                phrase,
             } => {
-                db::edit_clip(&conn, clip_id, description, phrase);
+                let mut clip = db::Clip::get(&db_pool, clip_id).await.unwrap();
+                if let Some(desc) = description {
+                    clip.description = desc;
+                }
+                clip.update(&db_pool).await.unwrap();
             }
 
             cli::Clip::List {} => {
-                for clip in db::all_clips(&conn) {
-                    println!("{:?}", clip);
+                for clip in db::Clip::list(&db_pool).await.unwrap() {
+                    println!("{}", clip);
                 }
             }
 
             cli::Clip::Remove { clip_id } => {
-                match diesel::delete(schema::clips::table.filter(schema::clips::id.eq(clip_id)))
-                    .execute(&conn)
-                {
-                    Ok(count) => {
-                        if count == 0 {
-                            println!("There's no clip with id {}", clip_id);
-                        } else {
-                            println!("Removed {} clips", count);
-                        }
-                    }
-                    Err(e) => {
-                        println!("Unable to remove clip: {:?}", e);
-                    }
-                }
+                let clip = db::Clip::get(&db_pool, clip_id).await.unwrap();
+                clip.remove(&db_pool, &opts.btfm_data_dir).await.unwrap();
             }
         },
+
+        cli::Command::Phrase(phrase_subcommand) => match phrase_subcommand {
+            cli::Phrase::Add { phrase } => {
+                db::Phrase::insert(&db_pool, &phrase)
+                    .await
+                    .expect("Failed to add phrase");
+            }
+
+            cli::Phrase::Edit { phrase_id, phrase } => {
+                let db_phrase = db::Phrase::get(&db_pool, phrase_id)
+                    .await
+                    .expect("Unable to get phrase with that ID");
+                db_phrase
+                    .update(&db_pool, &phrase)
+                    .await
+                    .expect("Couldn't set the new phrase for the clip");
+            }
+
+            cli::Phrase::List {} => {
+                for phrase in db::Phrase::list(&db_pool).await.unwrap() {
+                    println!("{}", phrase);
+                }
+            }
+
+            cli::Phrase::Remove { phrase_id } => {
+                let db_phrase = db::Phrase::get(&db_pool, phrase_id)
+                    .await
+                    .expect("Unable to get phrase with that ID");
+                db_phrase
+                    .remove(&db_pool)
+                    .await
+                    .expect("Failed to remove phrase");
+            }
+            cli::Phrase::Trigger { clip_id, phrase_id } => {
+                db::ClipPhrase::insert(&db_pool, clip_id, phrase_id)
+                    .await
+                    .unwrap();
+            }
+            cli::Phrase::Untrigger { clip_id, phrase_id } => {
+                db::ClipPhrase::remove(&db_pool, clip_id, phrase_id)
+                    .await
+                    .unwrap();
+            }
+        },
+        cli::Command::Trigger { clip_id, phrase } => {
+            match db::Phrase::insert(&db_pool, &phrase).await {
+                Ok(phrase_id) => {
+                    db::ClipPhrase::insert(&db_pool, clip_id, phrase_id)
+                        .await
+                        .unwrap();
+                }
+                Err(e) => {
+                    println!("Unable to add phrase: {:?}", e);
+                }
+            }
+        }
     }
 }
