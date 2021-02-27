@@ -22,6 +22,7 @@ jobs:
           rm -rf deepspeech
           sudo ldconfig
           sudo apt install -y libsqlite3-dev
+          export DATABASE_URL=sqlite://"$(mktemp -d)"/test.sqlite
           cargo install sqlx-cli
           cargo sqlx database setup
       - name: Create release build
