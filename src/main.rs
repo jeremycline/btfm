@@ -18,7 +18,7 @@ use btfm::{cli, db, DB_NAME};
 
 static MIGRATIONS: sqlx::migrate::Migrator = sqlx::migrate!("./migrations/");
 
-#[tokio::main(flavor = "multi_thread", worker_threads = 10)]
+#[tokio::main(flavor = "multi_thread")]
 async fn main() {
     let opts = cli::Btfm::from_args();
 
