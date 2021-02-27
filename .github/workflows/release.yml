@@ -23,6 +23,7 @@ jobs:
           sudo ldconfig
           sudo apt install -y libsqlite3-dev
           export DATABASE_URL=sqlite://"$(mktemp -d)"/test.sqlite
+          echo "DATABASE_URL=$DATABASE_URL" >> $GITHUB_ENV
           cargo install sqlx-cli
           cargo sqlx database setup
       - name: Create release build
