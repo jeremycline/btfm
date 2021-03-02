@@ -525,6 +525,38 @@ pub async fn clips_for_phrase(
     .map_err(crate::Error::Database)
 }
 
+/// Find phrases associated with a given clip.
+///
+/// # Arguments
+///
+/// `pool` - The SQLx database pool to use when issuing the query.
+///
+/// `clip_id` - The primary key of the clip for which you would
+///               like to find the associated phrases.
+///
+/// # Returns
+///
+/// All Phrases associated with the given clip ID.
+pub async fn phrases_for_clip(
+    pool: &SqlitePool,
+    clip_id: i64,
+) -> Result<Vec<Phrase>, crate::Error> {
+    sqlx::query_as!(
+        Phrase,
+        "
+        SELECT phrases.*
+        FROM phrases
+        LEFT JOIN clips_phrases
+        ON phrases.id = clips_phrases.phrase_id
+        WHERE clip_id = ?
+        ",
+        clip_id
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(crate::Error::Database)
+}
+
 /// Get the last time a clip was played.
 
 /// # Arguments
