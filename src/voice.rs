@@ -297,44 +297,6 @@ pub async fn voice_to_text(
     text.await.unwrap_or_else(|_| "".to_string())
 }
 
-/// For a given text, select a audio clip to play.
-///
-/// This includes rate-limiting and random selection when multiple clips match.
-async fn text_to_clip(
-    pool: &sqlx::SqlitePool,
-    data_dir: PathBuf,
-    rate_adjuster: f64,
-    result: &str,
-) -> Option<PathBuf> {
-    let current_time = NaiveDateTime::from_timestamp(
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("It's time to check your system clock")
-            .as_secs() as i64,
-        0,
-    );
-
-    if result.contains("excuse me") {
-        info!("Not rate limiting clip since someone was so polite");
-    } else if rate_limit(
-        db::last_play_time(pool).await,
-        current_time,
-        rate_adjuster,
-        &mut rand::thread_rng(),
-    ) {
-        return None;
-    }
-
-    let clips = db::match_phrase(pool, result).await.unwrap();
-    let clip = clips.into_iter().choose(&mut rand::thread_rng());
-    if let Some(mut clip) = clip {
-        clip.mark_played(pool).await.unwrap();
-        Some(data_dir.join(clip.audio_file))
-    } else {
-        None
-    }
-}
-
 struct User {
     _packet_buffer: Mutex<Vec<i16>>,
 }
@@ -416,7 +378,6 @@ impl VoiceEventHandler for Receiver {
                         .expect("Expected voice manager");
                     let mut btfm_data = locked_btfm_data.lock().await;
                     let deepspeech_model = btfm_data.deepspeech_model.clone();
-                    let data_dir = btfm_data.data_dir.clone();
                     let rate_adjuster = btfm_data.rate_adjuster;
                     let deepspeech_scorer = btfm_data.deepspeech_external_scorer.clone();
                     if let Some(user) = btfm_data.users.get_mut(ssrc) {
@@ -427,16 +388,69 @@ impl VoiceEventHandler for Receiver {
                         if text.is_empty() {
                             return None;
                         }
-                        let msg = format!("Bot heard \"{:}\"", &text);
-                        log_event_to_channel(btfm_data.log_channel_id, &http_and_cache.http, &msg)
+
+                        let current_time = NaiveDateTime::from_timestamp(
+                            SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .expect("It's time to check your system clock")
+                                .as_secs() as i64,
+                            0,
+                        );
+                        if !text.contains("excuse me")
+                            && rate_limit(
+                                db::last_play_time(&btfm_data.db).await,
+                                current_time,
+                                rate_adjuster,
+                                &mut rand::thread_rng(),
+                            )
+                        {
+                            let msg = format!("The bot heard `{:}`, but was rate-limited", &text);
+                            log_event_to_channel(
+                                btfm_data.log_channel_id,
+                                &http_and_cache.http,
+                                &msg,
+                            )
+                            .await;
+                            return None;
+                        }
+
+                        let clips = db::match_phrase(&btfm_data.db, &text).await.unwrap();
+                        let clip_count = clips.len();
+                        let clip = clips.into_iter().choose(&mut rand::thread_rng());
+                        if let Some(mut clip) = clip {
+                            clip.mark_played(&btfm_data.db).await.unwrap();
+
+                            let phrases = db::phrases_for_clip(&btfm_data.db, clip.id)
+                                .await
+                                .unwrap_or_else(|_| vec![])
+                                .iter()
+                                .map(|p| format!("`{}`", &p.phrase))
+                                .collect::<Vec<String>>()
+                                .join(", ");
+                            let msg = format!(
+                                "This technological terror heard `{:}`, which matched against {} clips;
+                                ```{}``` was randomly selected. Phrases that would trigger this clip: {}",
+                                &text, clip_count, &clip, phrases);
+                            log_event_to_channel(
+                                btfm_data.log_channel_id,
+                                &http_and_cache.http,
+                                &msg,
+                            )
                             .await;
 
-                        let clip =
-                            text_to_clip(&btfm_data.db, data_dir, rate_adjuster, &text).await;
-                        if let Some(clip) = clip {
-                            let source = songbird::ffmpeg(clip).await.unwrap();
+                            let source = songbird::ffmpeg(btfm_data.data_dir.join(clip.audio_file))
+                                .await
+                                .unwrap();
                             let mut call = self.locked_call.lock().await;
                             call.play_source(source);
+                        } else {
+                            let msg = format!("No phrases matched `{}`", &text);
+                            log_event_to_channel(
+                                btfm_data.log_channel_id,
+                                &http_and_cache.http,
+                                &msg,
+                            )
+                            .await;
                         }
                     }
                 }
