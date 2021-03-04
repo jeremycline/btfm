@@ -15,6 +15,14 @@ pub struct Btfm {
 
 #[derive(StructOpt, Debug)]
 pub enum Command {
+    /// Compare the clips in the database with audio clips on disk; this is useful if something
+    /// goes terribly wrong with this program or your filesystem. It will list clips with files
+    /// that don't exist, as well as files that don't belong to any clip.
+    Tidy {
+        /// Remove the dangling files and remove the clips without files from the database
+        #[structopt(long)]
+        clean: bool,
+    },
     /// Run the bot service
     Run {
         /// Log verbosity (-v for warn, -vv for info, etc)
