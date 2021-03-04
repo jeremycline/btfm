@@ -88,8 +88,9 @@ impl Clip {
         deepspeech_model: &Path,
         deepspeech_external_scorer: &Path,
     ) -> Result<Clip, crate::Error> {
-        let clips_dir = btfm_data_dir.join("clips");
-        let file_prefix: String = thread_rng().sample_iter(&Alphanumeric).take(6).collect();
+        let mut file_prefix = "clips/".to_owned();
+        let random_prefix: String = thread_rng().sample_iter(&Alphanumeric).take(6).collect();
+        file_prefix.push_str(random_prefix.as_str());
         let file_name = file_prefix
             + "-"
             + file
@@ -97,7 +98,7 @@ impl Clip {
                 .expect("Path cannot terminate in ..")
                 .to_str()
                 .expect("File name is not valid UTF-8");
-        let clip_destination = clips_dir.join(&file_name);
+        let clip_destination = btfm_data_dir.join(&file_name);
         fs::copy(&file, &clip_destination).expect("Unable to copy clip to data directory");
 
         let ds_model =
@@ -123,7 +124,7 @@ impl Clip {
         .await;
         match insert_result {
             Ok(insert) => {
-                info!("Added clip for {}", file_name.as_str());
+                info!("Added clip for {}", file_name);
                 return Clip::get(pool, insert.last_insert_rowid()).await;
             }
             Err(e) => return Err(crate::Error::Database(e)),
@@ -147,15 +148,15 @@ impl Clip {
         pool: &SqlitePool,
         btfm_data_dir: &Path,
     ) -> Result<u64, crate::Error> {
-        let clip_path = btfm_data_dir.join("clips").join(&self.audio_file);
+        let clip_path = btfm_data_dir.join(&self.audio_file);
 
         match tokio::fs::remove_file(&clip_path).await {
             Ok(_) => {
-                info!("Removed audio file clips/{}", &self.audio_file)
+                info!("Removed audio file {}", &self.audio_file)
             }
             Err(err) => {
                 error!(
-                    "Failed to remove audio file at clips/{}: {}",
+                    "Failed to remove audio file at {}: {}",
                     &self.audio_file, err
                 )
             }
