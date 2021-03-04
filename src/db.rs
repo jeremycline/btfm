@@ -7,7 +7,7 @@ use chrono::NaiveDateTime;
 use deepspeech::Model;
 use log::{error, info};
 use rand::{distributions::Alphanumeric, prelude::*};
-use sqlx::SqlitePool;
+use sqlx::PgPool;
 
 /// Representation of an audio clip in the database.
 ///
@@ -51,7 +51,7 @@ impl Clip {
     /// # Returns
     ///
     /// A Result with all the clips in the database.
-    pub async fn list(pool: &SqlitePool) -> Result<Vec<Clip>, crate::Error> {
+    pub async fn list(pool: &PgPool) -> Result<Vec<Clip>, crate::Error> {
         sqlx::query_as!(
             Clip,
             "
@@ -81,7 +81,7 @@ impl Clip {
     ///
     /// The Result is a newly-added Clip, assuming something terrible didn't happen.
     pub async fn insert(
-        pool: &SqlitePool,
+        pool: &PgPool,
         btfm_data_dir: &Path,
         file: &Path,
         description: &str,
@@ -114,18 +114,27 @@ impl Clip {
         let insert_result = sqlx::query!(
             "
             INSERT INTO clips (phrase, description, audio_file)
-            VALUES (?, ?, ?);
+            VALUES ($1, $2, $3)
+            RETURNING id, created_on, last_played, plays, phrase, description, audio_file
             ",
             phrase,
             description,
             file_name,
         )
-        .execute(pool)
+        .fetch_one(pool)
         .await;
         match insert_result {
             Ok(insert) => {
-                info!("Added clip for {}", file_name);
-                return Clip::get(pool, insert.last_insert_rowid()).await;
+                info!("Added clip for {}", &file_name);
+                return Ok(Clip {
+                    id: insert.id,
+                    created_on: insert.created_on,
+                    last_played: insert.last_played,
+                    plays: insert.plays,
+                    phrase: insert.phrase,
+                    description: insert.description,
+                    audio_file: insert.audio_file,
+                });
             }
             Err(e) => return Err(crate::Error::Database(e)),
         }
@@ -143,11 +152,7 @@ impl Clip {
     ///
     /// The number of clips deleted, which should be either 1 or 0, or if things have
     /// gone very wrong, maybe many more. This isn't a very good API.
-    pub async fn remove(
-        &self,
-        pool: &SqlitePool,
-        btfm_data_dir: &Path,
-    ) -> Result<u64, crate::Error> {
+    pub async fn remove(&self, pool: &PgPool, btfm_data_dir: &Path) -> Result<u64, crate::Error> {
         let clip_path = btfm_data_dir.join(&self.audio_file);
 
         match tokio::fs::remove_file(&clip_path).await {
@@ -165,7 +170,7 @@ impl Clip {
         sqlx::query!(
             "
             DELETE FROM clips
-            WHERE id = ?
+            WHERE id = $1
             ",
             self.id,
         )
@@ -187,12 +192,12 @@ impl Clip {
     /// # Returns
     ///
     /// A Result with the number of affected rows when issuing the update.
-    pub async fn update(&self, pool: &SqlitePool) -> Result<u64, crate::Error> {
+    pub async fn update(&self, pool: &PgPool) -> Result<u64, crate::Error> {
         sqlx::query!(
             "
             UPDATE clips
-            SET description = ?, phrase = ?
-            WHERE id = ?
+            SET description = $1, phrase = $2
+            WHERE id = $3
             ",
             self.description,
             self.phrase,
@@ -220,13 +225,13 @@ impl Clip {
     /// # Returns
     ///
     /// The Clip, or the database error you brought upon yourself.
-    pub async fn get(pool: &SqlitePool, id: i64) -> Result<Clip, crate::Error> {
+    pub async fn get(pool: &PgPool, id: i64) -> Result<Clip, crate::Error> {
         sqlx::query_as!(
             Clip,
             "
             SELECT *
             FROM clips
-            WHERE id = ?;
+            WHERE id = $1;
             ",
             id
         )
@@ -246,7 +251,7 @@ impl Clip {
     /// # Returns
     ///
     /// The number of rows updated, which should be 1 but maybe won't be, you should totally check that.
-    pub async fn mark_played(&mut self, pool: &SqlitePool) -> Result<u64, crate::Error> {
+    pub async fn mark_played(&mut self, pool: &PgPool) -> Result<u64, crate::Error> {
         self.plays += 1;
         self.last_played = chrono::NaiveDateTime::from_timestamp(
             std::time::SystemTime::now()
@@ -258,8 +263,8 @@ impl Clip {
         sqlx::query!(
             "
             UPDATE clips
-            SET plays = ?, last_played = ?
-            WHERE id = ?
+            SET plays = $1, last_played = $2
+            WHERE id = $3
             ",
             self.plays,
             self.last_played,
@@ -301,7 +306,7 @@ impl Phrase {
     ///
     /// All Phrase objects in the database, or the unlying database error wrapped in an
     /// Error::Database.
-    pub async fn list(pool: &SqlitePool) -> Result<Vec<Phrase>, crate::Error> {
+    pub async fn list(pool: &PgPool) -> Result<Vec<Phrase>, crate::Error> {
         sqlx::query_as!(
             Phrase,
             "
@@ -325,20 +330,26 @@ impl Phrase {
     /// # Returns
     ///
     /// The Phrase ID.
-    pub async fn insert(pool: &SqlitePool, phrase: &str) -> Result<i64, crate::Error> {
+    pub async fn insert(pool: &PgPool, phrase: &str) -> Result<Phrase, crate::Error> {
         let lowercase_phrase = phrase.to_lowercase();
         sqlx::query!(
             "
             INSERT INTO phrases (phrase)
-            VALUES (?);
+            VALUES ($1)
+            RETURNING id, phrase
             ",
             lowercase_phrase
         )
-        .execute(pool)
+        .fetch_one(pool)
         .await
         .map_or_else(
             |e| Err(crate::Error::Database(e)),
-            |insert| Ok(insert.last_insert_rowid()),
+            |insert| {
+                Ok(Phrase {
+                    id: insert.id,
+                    phrase: insert.phrase,
+                })
+            },
         )
     }
 
@@ -351,11 +362,11 @@ impl Phrase {
     /// # Returns
     ///
     /// The number of rows affected by the update.
-    pub async fn remove(&self, pool: &SqlitePool) -> Result<u64, crate::Error> {
+    pub async fn remove(&self, pool: &PgPool) -> Result<u64, crate::Error> {
         sqlx::query!(
             "
             DELETE FROM phrases
-            WHERE id = ?
+            WHERE id = $1
             ",
             self.id,
         )
@@ -378,12 +389,12 @@ impl Phrase {
     /// # Returns
     ///
     /// The number of rows affected by the update.
-    pub async fn update(&self, pool: &SqlitePool, phrase: &str) -> Result<u64, crate::Error> {
+    pub async fn update(&self, pool: &PgPool, phrase: &str) -> Result<u64, crate::Error> {
         sqlx::query!(
             "
             UPDATE phrases
-            SET phrase = ?
-            WHERE id = ?
+            SET phrase = $1
+            WHERE id = $2
             ",
             phrase,
             self.id,
@@ -407,13 +418,13 @@ impl Phrase {
     /// # Returns
     ///
     /// The Phrase.
-    pub async fn get(pool: &SqlitePool, phrase_id: i64) -> Result<Phrase, crate::Error> {
+    pub async fn get(pool: &PgPool, phrase_id: i64) -> Result<Phrase, crate::Error> {
         sqlx::query_as!(
             Phrase,
             "
             SELECT *
             FROM phrases
-            WHERE id = ?
+            WHERE id = $1
             ",
             phrase_id,
         )
@@ -444,15 +455,11 @@ impl ClipPhrase {
     ///
     /// If an error occurs, it is returned, otherwise the clip_id and phrase_id provided are the composite
     /// primary key for the association table.
-    pub async fn insert(
-        pool: &SqlitePool,
-        clip_id: i64,
-        phrase_id: i64,
-    ) -> Result<(), crate::Error> {
+    pub async fn insert(pool: &PgPool, clip_id: i64, phrase_id: i64) -> Result<(), crate::Error> {
         sqlx::query!(
             "
             INSERT INTO clips_phrases (clip_id, phrase_id)
-            VALUES (?, ?);
+            VALUES ($1, $2);
             ",
             clip_id,
             phrase_id,
@@ -475,15 +482,11 @@ impl ClipPhrase {
     /// # Returns
     ///
     /// If an error occurs, it is returned; this includes if the given ids are invalid.
-    pub async fn remove(
-        pool: &SqlitePool,
-        clip_id: i64,
-        phrase_id: i64,
-    ) -> Result<(), crate::Error> {
+    pub async fn remove(pool: &PgPool, clip_id: i64, phrase_id: i64) -> Result<(), crate::Error> {
         sqlx::query!(
             "
             DELETE FROM clips_phrases
-            WHERE clip_id = ? AND phrase_id = ?;
+            WHERE clip_id = $1 AND phrase_id = $2;
             ",
             clip_id,
             phrase_id,
@@ -506,10 +509,7 @@ impl ClipPhrase {
 /// # Returns
 ///
 /// All Clips associated with the given phrase ID.
-pub async fn clips_for_phrase(
-    pool: &SqlitePool,
-    phrase_id: i64,
-) -> Result<Vec<Clip>, crate::Error> {
+pub async fn clips_for_phrase(pool: &PgPool, phrase_id: i64) -> Result<Vec<Clip>, crate::Error> {
     sqlx::query_as!(
         Clip,
         "
@@ -517,7 +517,7 @@ pub async fn clips_for_phrase(
         FROM clips
         LEFT JOIN clips_phrases
         ON clips.id = clips_phrases.clip_id
-        WHERE phrase_id = ?
+        WHERE phrase_id = $1
         ",
         phrase_id
     )
@@ -538,10 +538,7 @@ pub async fn clips_for_phrase(
 /// # Returns
 ///
 /// All Phrases associated with the given clip ID.
-pub async fn phrases_for_clip(
-    pool: &SqlitePool,
-    clip_id: i64,
-) -> Result<Vec<Phrase>, crate::Error> {
+pub async fn phrases_for_clip(pool: &PgPool, clip_id: i64) -> Result<Vec<Phrase>, crate::Error> {
     sqlx::query_as!(
         Phrase,
         "
@@ -549,7 +546,7 @@ pub async fn phrases_for_clip(
         FROM phrases
         LEFT JOIN clips_phrases
         ON phrases.id = clips_phrases.phrase_id
-        WHERE clip_id = ?
+        WHERE clip_id = $1
         ",
         clip_id
     )
@@ -569,7 +566,7 @@ pub async fn phrases_for_clip(
 /// The last time a clip was played by the bot. In the event that an error
 /// occurs, the epoch is returned. I did this to make some sort of epoch
 /// failure joke, in the docs, but phrasing it smoothly is difficult.
-pub async fn last_play_time(pool: &SqlitePool) -> NaiveDateTime {
+pub async fn last_play_time(pool: &PgPool) -> NaiveDateTime {
     let clip_query = sqlx::query!(
         "
         SELECT last_played
@@ -598,7 +595,7 @@ pub async fn last_play_time(pool: &SqlitePool) -> NaiveDateTime {
 /// Clips that match the given phrase, if any. Clips match the phrase
 /// if they contain (according to deepspeech) the given phrase, or if a
 /// user-provided phrase is associated with it.
-pub async fn match_phrase(pool: &SqlitePool, phrase: &str) -> Result<Vec<Clip>, crate::Error> {
+pub async fn match_phrase(pool: &PgPool, phrase: &str) -> Result<Vec<Clip>, crate::Error> {
     let clips = Clip::list(pool).await?;
     let phrases = Phrase::list(pool).await?;
 

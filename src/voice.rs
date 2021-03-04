@@ -51,7 +51,7 @@ pub struct BtfmData {
     ssrc_map: HashMap<u64, u32>,
     // How many times the given user has joined the channel so we can give them rejoin messages.
     user_history: HashMap<u64, u32>,
-    db: sqlx::Pool<sqlx::Sqlite>,
+    db: sqlx::PgPool,
 }
 impl TypeMapKey for BtfmData {
     type Value = Arc<Mutex<BtfmData>>;
@@ -66,7 +66,7 @@ impl BtfmData {
         channel_id: u64,
         log_channel_id: Option<u64>,
         rate_adjuster: f64,
-        db: sqlx::Pool<sqlx::Sqlite>,
+        db: sqlx::PgPool,
     ) -> BtfmData {
         BtfmData {
             data_dir,

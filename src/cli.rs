@@ -6,9 +6,12 @@ use structopt::StructOpt;
 #[derive(StructOpt, Debug)]
 #[structopt(name = "btfm", about = "Start the btfm service, add audio clips, etc.")]
 pub struct Btfm {
-    /// Path to the BTFM data directory where clips and the database is stored
+    /// Path to the BTFM data directory where clips are stored
     #[structopt(long, parse(from_os_str), env = "BTFM_DATA_DIR")]
     pub btfm_data_dir: PathBuf,
+    /// PostgreSQL database URL in the format postgres://<user>:<password>@hostname/dbname
+    #[structopt(env = "DATABASE_URL")]
+    pub db_url: String,
     #[structopt(subcommand)]
     pub command: Command,
 }

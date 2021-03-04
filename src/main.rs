@@ -11,10 +11,11 @@ use songbird::{
     driver::{Config as DriverConfig, DecodeMode},
     SerenityInit, Songbird,
 };
+use sqlx::postgres::PgPoolOptions;
 use structopt::StructOpt;
 
 use btfm::voice::{BtfmData, Handler, HttpClient};
-use btfm::{cli, db, DB_NAME};
+use btfm::{cli, db};
 
 static MIGRATIONS: sqlx::migrate::Migrator = sqlx::migrate!("./migrations/");
 
@@ -22,8 +23,9 @@ static MIGRATIONS: sqlx::migrate::Migrator = sqlx::migrate!("./migrations/");
 async fn main() {
     let opts = cli::Btfm::from_args();
 
-    let db_pool = sqlx::sqlite::SqlitePoolOptions::new()
-        .connect(opts.btfm_data_dir.join(DB_NAME).to_str().unwrap())
+    let db_pool = PgPoolOptions::new()
+        .max_connections(10)
+        .connect(&opts.db_url)
         .await
         .expect("Unable to connect to database");
     match MIGRATIONS.run(&db_pool).await {
@@ -172,8 +174,8 @@ async fn main() {
         },
         cli::Command::Trigger { clip_id, phrase } => {
             match db::Phrase::insert(&db_pool, &phrase).await {
-                Ok(phrase_id) => {
-                    db::ClipPhrase::insert(&db_pool, clip_id, phrase_id)
+                Ok(phrase) => {
+                    db::ClipPhrase::insert(&db_pool, clip_id, phrase.id)
                         .await
                         .unwrap();
                 }

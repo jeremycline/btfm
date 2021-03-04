@@ -22,7 +22,7 @@ rand = "0.7"
 songbird = "0.1"
 byteorder = "1"
 thiserror = "1.0"
-sqlx = {"version" = "0.5", features=["runtime-tokio-rustls", "sqlite", "chrono", "migrate", "macros"]}
+sqlx = {"version" = "0.5", features=["runtime-tokio-rustls", "postgres", "chrono", "migrate", "macros"]}
 
 [dependencies.audrey]
 features = ["wav"]
