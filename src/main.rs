@@ -182,5 +182,44 @@ async fn main() {
                 }
             }
         }
+        cli::Command::Tidy { clean } => {
+            let clips = db::Clip::list(&db_pool)
+                .await
+                .expect("Failed to query the database for clips");
+            println!("Clips without audio files:");
+            for clip in clips.iter() {
+                let file = opts.btfm_data_dir.join(&clip.audio_file);
+                if !file.exists() {
+                    println!("{}", clip);
+                    if clean {
+                        clip.remove(&db_pool, &opts.btfm_data_dir).await.unwrap();
+                    }
+                }
+            }
+
+            let clip_dir = opts.btfm_data_dir.join("clips");
+            match fs::read_dir(&clip_dir) {
+                Ok(files) => {
+                    println!("Audio files without clips:");
+                    let clip_names: Vec<String> =
+                        clips.iter().map(|clip| clip.audio_file.clone()).collect();
+                    for file in files.flatten() {
+                        let file_namish = "clips/".to_owned() + file.file_name().to_str().unwrap();
+                        if !clip_names.iter().any(|p| p == &file_namish) {
+                            let file_path = file.path();
+                            println!("{}", &file_path.to_str().unwrap());
+                            if clean {
+                                if let Err(e) = tokio::fs::remove_file(file.path()).await {
+                                    println!("Failed to remove file: {}", e)
+                                }
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    println!("Unable to read clips: {}", e)
+                }
+            }
+        }
     }
 }
