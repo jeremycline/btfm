@@ -1,0 +1,22 @@
+CREATE TABLE IF NOT EXISTS "clips" (
+    "id" BIGSERIAL PRIMARY KEY,
+    "created_on" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "last_played" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "plays" BIGINT NOT NULL DEFAULT 0,
+    "phrase" TEXT NOT NULL,
+    "description" TEXT NOT NULL,
+    "audio_file" TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS "phrases" (
+    "id" BIGSERIAL PRIMARY KEY,
+    "phrase" TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS "clips_phrases" (
+    "clip_id" BIGINT NOT NULL,
+    "phrase_id" BIGINT NOT NULL,
+    PRIMARY KEY (clip_id, phrase_id),
+    FOREIGN KEY (clip_id) REFERENCES clips(id) ON DELETE CASCADE ON UPDATE NO ACTION,
+    FOREIGN KEY (phrase_id) REFERENCES phrases(id) ON DELETE CASCADE ON UPDATE NO ACTION
+);

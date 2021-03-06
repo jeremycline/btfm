@@ -18,11 +18,17 @@ jobs:
           unxz native_client.amd64.cpu.linux.tar.xz
           tar -xf native_client.amd64.cpu.linux.tar
           sudo cp libdeepspeech.so /usr/local/lib/
+          sudo ldconfig
           popd
           rm -rf deepspeech
-          sudo ldconfig
-          sudo apt install -y libsqlite3-dev
-          export DATABASE_URL=sqlite://"$(mktemp -d)"/test.sqlite
+
+          sudo apt install postgresql postgresql-contrib
+          sudo systemctl restart postgresql.service
+          sudo -u postgres createuser btfm
+          sudo -u postgres createdb btfm
+          sudo -u postgres psql -c "ALTER USER btfm PASSWORD 'password';"
+          sudo -u postgres psql -c "ALTER DATABASE btfm OWNER to btfm;"
+          export DATABASE_URL=postgres://btfm:password@localhost/btfm
           echo "DATABASE_URL=$DATABASE_URL" >> $GITHUB_ENV
           cargo install sqlx-cli
           cargo sqlx database setup
