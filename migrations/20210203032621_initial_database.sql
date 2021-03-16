@@ -14,9 +14,10 @@ CREATE TABLE IF NOT EXISTS "phrases" (
 );
 
 CREATE TABLE IF NOT EXISTS "clips_phrases" (
+    "id" BIGSERIAL PRIMARY KEY,
     "clip_id" BIGINT NOT NULL,
     "phrase_id" BIGINT NOT NULL,
-    PRIMARY KEY (clip_id, phrase_id),
+    UNIQUE (clip_id, phrase_id),
     FOREIGN KEY (clip_id) REFERENCES clips(id) ON DELETE CASCADE ON UPDATE NO ACTION,
     FOREIGN KEY (phrase_id) REFERENCES phrases(id) ON DELETE CASCADE ON UPDATE NO ACTION
 );
