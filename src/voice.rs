@@ -48,6 +48,7 @@ pub struct BtfmData {
     log_channel_id: Option<ChannelId>,
     rate_adjuster: f64,
     users: HashMap<u32, User>,
+    // Map user IDs to ssrc
     ssrc_map: HashMap<u64, u32>,
     // How many times the given user has joined the channel so we can give them rejoin messages.
     user_history: HashMap<u64, u32>,
@@ -299,12 +300,14 @@ pub async fn voice_to_text(
 
 struct User {
     _packet_buffer: Mutex<Vec<i16>>,
+    speaking: bool,
 }
 
 impl User {
     pub fn new() -> User {
         User {
             _packet_buffer: Mutex::new(Vec::new()),
+            speaking: false,
         }
     }
 }
@@ -362,7 +365,32 @@ impl VoiceEventHandler for Receiver {
 
             EventContext::SpeakingUpdate { ssrc, speaking } => {
                 debug!("SSRC {:?} speaking state update to {:?}", ssrc, speaking);
-                if !speaking {
+                if *speaking {
+                    let locked_btfm_data = Arc::clone(&self.client_data)
+                        .read()
+                        .await
+                        .get::<BtfmData>()
+                        .cloned()
+                        .expect("Expected voice manager");
+                    let mut btfm_data = locked_btfm_data.lock().await;
+
+                    if let Some(user) = btfm_data.users.get_mut(ssrc) {
+                        user.speaking = true;
+                    }
+
+                    let call = self.locked_call.lock().await;
+                    if let Some(track) = call.queue().current() {
+                        if let Some(duration) = track.metadata().duration {
+                            if duration > core::time::Duration::new(3, 0) {
+                                if let Err(e) = track.pause() {
+                                    info!("Unable to pause playback: {}", e);
+                                }
+                            } else {
+                                info!("Would have paused but track less than 3 seconds");
+                            }
+                        }
+                    }
+                } else {
                     let http_and_cache = Arc::clone(&self.client_data)
                         .read()
                         .await
@@ -376,10 +404,24 @@ impl VoiceEventHandler for Receiver {
                         .get::<BtfmData>()
                         .cloned()
                         .expect("Expected voice manager");
+
                     let mut btfm_data = locked_btfm_data.lock().await;
                     let deepspeech_model = btfm_data.deepspeech_model.clone();
                     let rate_adjuster = btfm_data.rate_adjuster;
                     let deepspeech_scorer = btfm_data.deepspeech_external_scorer.clone();
+
+                    if let Some(user) = btfm_data.users.get_mut(ssrc) {
+                        user.speaking = false;
+                    }
+
+                    // We pause playback if people are speaking; make sure to resume if everyone is quiet.
+                    if btfm_data.users.values().all(|user| !user.speaking) {
+                        let call = self.locked_call.lock().await;
+                        if let Err(e) = call.queue().resume() {
+                            info!("Unable to resume playback of queue: {}", e);
+                        }
+                    }
+
                     if let Some(user) = btfm_data.users.get_mut(ssrc) {
                         let voice_data = user.reset().await;
                         let voice_data = discord_to_wav(voice_data, 16_000).await;
@@ -442,7 +484,7 @@ impl VoiceEventHandler for Receiver {
                                 .await
                                 .unwrap();
                             let mut call = self.locked_call.lock().await;
-                            call.play_source(source);
+                            call.enqueue_source(source);
                         } else {
                             let msg = format!("No phrases matched `{}`", &text);
                             log_event_to_channel(

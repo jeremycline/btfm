@@ -19,7 +19,7 @@ log = "0.4"
 stderrlog = "0.5"
 chrono = "0.4"
 rand = "0.7"
-songbird = "0.1"
+songbird = {"version" = "0.1", features=["default", "builtin-queue"]}
 byteorder = "1"
 thiserror = "1.0"
 sqlx = {"version" = "0.5", features=["runtime-tokio-rustls", "postgres", "chrono", "migrate", "macros"]}
