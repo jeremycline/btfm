@@ -382,11 +382,11 @@ impl VoiceEventHandler for Receiver {
                     if let Some(track) = call.queue().current() {
                         if let Some(duration) = track.metadata().duration {
                             if duration > core::time::Duration::new(3, 0) {
-                                if let Err(e) = track.pause() {
-                                    info!("Unable to pause playback: {}", e);
+                                if let Err(e) = track.set_volume(0.4) {
+                                    info!("Unable to lower volume of playback: {}", e);
                                 }
                             } else {
-                                info!("Would have paused but track less than 3 seconds");
+                                info!("Track less than 3 seconds; playing at full volume");
                             }
                         }
                     }
@@ -417,8 +417,10 @@ impl VoiceEventHandler for Receiver {
                     // We pause playback if people are speaking; make sure to resume if everyone is quiet.
                     if btfm_data.users.values().all(|user| !user.speaking) {
                         let call = self.locked_call.lock().await;
-                        if let Err(e) = call.queue().resume() {
-                            info!("Unable to resume playback of queue: {}", e);
+                        if let Some(track) = call.queue().current() {
+                            if let Err(e) = track.set_volume(1.0) {
+                                info!("Unable to boost volume playback: {}", e);
+                            }
                         }
                     }
 
