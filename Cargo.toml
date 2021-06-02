@@ -18,7 +18,7 @@ structopt = "0.3"
 log = "0.4"
 stderrlog = "0.5"
 chrono = "0.4"
-rand = "0.7"
+rand = "0.8"
 songbird = {"version" = "0.1", features=["default", "builtin-queue"]}
 byteorder = "1"
 thiserror = "1.0"
@@ -33,7 +33,7 @@ version = "0.10"
 features = ["cache", "framework", "gateway", "standard_framework", "http", "rustls_backend", "voice", "utils"]
 
 [dev-dependencies]
-rand = {version = "0.7", features = ["small_rng"]}
+rand = {version = "0.8", features = ["small_rng"]}
 rand_core = "0"
 
 [profile.release]
