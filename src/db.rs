@@ -102,7 +102,7 @@ impl Clip {
         fs::copy(&file, &clip_destination).expect("Unable to copy clip to data directory");
 
         let ds_model =
-            Model::load_from_files(&deepspeech_model).expect("Unable to load deepspeech model");
+            Model::load_from_files(deepspeech_model).expect("Unable to load deepspeech model");
         let audio = crate::voice::file_to_wav(&clip_destination, ds_model.get_sample_rate()).await;
         let phrase = crate::voice::voice_to_text(
             deepspeech_model.to_owned(),
@@ -126,7 +126,7 @@ impl Clip {
         match insert_result {
             Ok(insert) => {
                 info!("Added clip for {}", &file_name);
-                return Ok(Clip {
+                Ok(Clip {
                     id: insert.id,
                     created_on: insert.created_on,
                     last_played: insert.last_played,
@@ -134,9 +134,9 @@ impl Clip {
                     phrase: insert.phrase,
                     description: insert.description,
                     audio_file: insert.audio_file,
-                });
+                })
             }
-            Err(e) => return Err(crate::Error::Database(e)),
+            Err(e) => Err(crate::Error::Database(e)),
         }
     }
 
@@ -577,8 +577,8 @@ pub async fn last_play_time(pool: &PgPool) -> NaiveDateTime {
     .fetch_one(pool)
     .await;
     match clip_query {
-        Ok(clip) => return clip.last_played,
-        Err(_) => return NaiveDateTime::from_timestamp(0, 0),
+        Ok(clip) => clip.last_played,
+        Err(_) => NaiveDateTime::from_timestamp(0, 0),
     }
 }
 

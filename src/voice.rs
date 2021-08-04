@@ -58,7 +58,7 @@ impl TypeMapKey for BtfmData {
     type Value = Arc<Mutex<BtfmData>>;
 }
 impl BtfmData {
-    #[allow(clippy::clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         data_dir: PathBuf,
         deepspeech_model: PathBuf,
@@ -120,7 +120,7 @@ async fn manage_voice_channel(context: &Context) -> bool {
         match channel.guild() {
             Some(guild_channel) => {
                 if let Ok(members) = guild_channel.members(&context.cache).await {
-                    if members.iter().find(|m| !m.user.bot).is_none() {
+                    if !members.iter().any(|m| !m.user.bot) {
                         if let Err(e) = manager.remove(btfm_data.guild_id).await {
                             info!("Failed to remove guild? {:?}", e);
                         }
@@ -609,7 +609,7 @@ pub async fn file_to_wav(audio: &Path, target_sample: i32) -> Vec<i16> {
             Err(_) => break,
         }
     }
-    return data;
+    data
 }
 
 /// Converts voice data to the target freqency, mono, and apply some ffmpeg filters.
@@ -691,7 +691,7 @@ async fn discord_to_wav(voice_data: Vec<i16>, target_sample: u32) -> Vec<i16> {
             Err(_) => break,
         }
     }
-    return data;
+    data
 }
 
 /// Return true if we should not play a clip (i.e., we are rate limited).
