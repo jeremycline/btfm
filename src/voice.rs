@@ -338,9 +338,10 @@ impl VoiceEventHandler for Receiver {
                 }
             }
 
-            EventContext::SpeakingUpdate { ssrc, speaking } => {
+            EventContext::SpeakingUpdate(data) => {
+                let (ssrc, speaking) = (data.ssrc, data.speaking);
                 debug!("SSRC {:?} speaking state update to {:?}", ssrc, speaking);
-                if *speaking {
+                if speaking {
                     let locked_btfm_data = Arc::clone(&self.client_data)
                         .read()
                         .await
@@ -349,7 +350,7 @@ impl VoiceEventHandler for Receiver {
                         .expect("Expected voice manager");
                     let mut btfm_data = locked_btfm_data.lock().await;
 
-                    if let Some(user) = btfm_data.users.get_mut(ssrc) {
+                    if let Some(user) = btfm_data.users.get_mut(&ssrc) {
                         user.speaking = true;
                     }
 
@@ -383,7 +384,7 @@ impl VoiceEventHandler for Receiver {
                     let mut btfm_data = locked_btfm_data.lock().await;
                     let rate_adjuster = btfm_data.rate_adjuster;
 
-                    if let Some(user) = btfm_data.users.get_mut(ssrc) {
+                    if let Some(user) = btfm_data.users.get_mut(&ssrc) {
                         user.speaking = false;
                     }
 
@@ -397,7 +398,7 @@ impl VoiceEventHandler for Receiver {
                         }
                     }
 
-                    if let Some(user) = btfm_data.users.get_mut(ssrc) {
+                    if let Some(user) = btfm_data.users.get_mut(&ssrc) {
                         let voice_data = user.reset().await;
                         let voice_data = discord_to_wav(voice_data, 16_000).await;
                         let text = btfm_data
@@ -476,7 +477,8 @@ impl VoiceEventHandler for Receiver {
                 }
             }
 
-            EventContext::VoicePacket { audio, packet, .. } => {
+            EventContext::VoicePacket(voice_data) => {
+                let (packet, audio) = (voice_data.packet, voice_data.audio);
                 trace!(
                     "Received voice packet from ssrc {}, sequence {}",
                     packet.ssrc,

@@ -91,8 +91,8 @@ impl Clip {
         deepspeech_external_scorer: &Path,
     ) -> Result<Clip, crate::Error> {
         let mut file_prefix = "clips/".to_owned();
-        let random_prefix: String = thread_rng().sample_iter(&Alphanumeric).take(6).collect();
-        file_prefix.push_str(random_prefix.as_str());
+        let random_prefix: String = thread_rng().sample_iter(&Alphanumeric).take(6).map(char::from).collect();
+        file_prefix.push_str(&random_prefix);
         let file_name = file_prefix
             + "-"
             + file

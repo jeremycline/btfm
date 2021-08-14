@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use serenity::{client::Client, framework::StandardFramework, prelude::*};
 use songbird::{
-    driver::{Config as DriverConfig, DecodeMode},
+    driver::DecodeMode,
     SerenityInit, Songbird,
 };
 use sqlx::postgres::PgPoolOptions;
@@ -56,7 +56,7 @@ async fn main() {
 
             let framework = StandardFramework::new();
             let songbird = Songbird::serenity();
-            songbird.set_config(DriverConfig::default().decode_mode(DecodeMode::Decode));
+            songbird.set_config(songbird::Config::default().decode_mode(DecodeMode::Decode));
 
             let mut client = Client::builder(&discord_token)
                 .event_handler(Handler)
