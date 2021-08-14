@@ -14,5 +14,6 @@ pub mod cli;
 pub mod db;
 pub mod voice;
 mod transcriber;
+mod transcode;
 
 pub const DB_NAME: &str = "btfm.sqlite3";

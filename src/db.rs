@@ -9,6 +9,8 @@ use log::{error, info};
 use rand::{distributions::Alphanumeric, prelude::*};
 use sqlx::PgPool;
 
+use crate::transcode::file_to_wav;
+
 /// Representation of an audio clip in the database.
 ///
 /// Administrators add these clips which are played when phrases associated with the clip match
@@ -103,7 +105,7 @@ impl Clip {
 
         let ds_model =
             Model::load_from_files(deepspeech_model).expect("Unable to load deepspeech model");
-        let audio = crate::voice::file_to_wav(&clip_destination, ds_model.get_sample_rate()).await;
+        let audio = file_to_wav(&clip_destination, ds_model.get_sample_rate()).await;
         let transcriber = crate::transcriber::Transcriber::new(
             deepspeech_model.to_owned(),
             Some(deepspeech_external_scorer.to_owned()),
