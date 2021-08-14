@@ -104,12 +104,11 @@ impl Clip {
         let ds_model =
             Model::load_from_files(deepspeech_model).expect("Unable to load deepspeech model");
         let audio = crate::voice::file_to_wav(&clip_destination, ds_model.get_sample_rate()).await;
-        let phrase = crate::voice::voice_to_text(
+        let transcriber = crate::transcriber::Transcriber::new(
             deepspeech_model.to_owned(),
             Some(deepspeech_external_scorer.to_owned()),
-            audio,
-        )
-        .await;
+        );
+        let phrase = transcriber.transcribe_plain_text(audio).await.unwrap();
 
         let insert_result = sqlx::query!(
             "

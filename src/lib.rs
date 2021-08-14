@@ -6,10 +6,13 @@ use thiserror::Error as ThisError;
 pub enum Error {
     #[error("A database error occurred: {0}")]
     Database(sqlx::Error),
+    #[error("Transcriber failed to respond to request")]
+    TranscriberGone,
 }
 
 pub mod cli;
 pub mod db;
 pub mod voice;
+mod transcriber;
 
 pub const DB_NAME: &str = "btfm.sqlite3";

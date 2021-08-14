@@ -1,6 +1,6 @@
 [package]
 name = "btfm"
-version = "0.12.1"
+version = "0.13.0"
 authors = ["Jeremy Cline", "Randy Barlow", "Brotivator"]
 edition = "2018"
 description = "A Discord bot that plays audio clips based on voice chat"
@@ -13,7 +13,7 @@ repository = "https://github.com/jeremycline/btfm/"
 
 [dependencies]
 tokio = { "version" = "1" }
-deepspeech = "0.9"
+deepspeech = { "version" = "0.9", "optional" = true }
 structopt = "0.3"
 log = "0.4"
 stderrlog = "0.5"
@@ -31,6 +31,11 @@ version = "0.3"
 [dependencies.serenity]
 version = "0.10"
 features = ["cache", "framework", "gateway", "standard_framework", "http", "rustls_backend", "voice", "utils"]
+
+[features]
+default = ["deepspeech_cpu"]
+
+deepspeech_cpu = ["deepspeech"]
 
 [dev-dependencies]
 rand = {version = "0.7", features = ["small_rng"]}

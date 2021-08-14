@@ -7,7 +7,6 @@ use std::{path::Path, sync::Arc};
 
 use byteorder::{ByteOrder, LittleEndian};
 use chrono::NaiveDateTime;
-use deepspeech::Model;
 use log::{debug, error, info, trace, warn};
 use rand::prelude::*;
 use tokio::io::AsyncReadExt;
@@ -33,6 +32,7 @@ use songbird::{
 };
 
 use crate::db;
+use crate::transcriber::Transcriber;
 
 pub struct HttpClient;
 impl TypeMapKey for HttpClient {
@@ -41,8 +41,7 @@ impl TypeMapKey for HttpClient {
 
 pub struct BtfmData {
     data_dir: PathBuf,
-    deepspeech_model: PathBuf,
-    deepspeech_external_scorer: Option<PathBuf>,
+    transcriber: Transcriber,
     guild_id: GuildId,
     channel_id: ChannelId,
     log_channel_id: Option<ChannelId>,
@@ -69,10 +68,10 @@ impl BtfmData {
         rate_adjuster: f64,
         db: sqlx::PgPool,
     ) -> BtfmData {
+        let transcriber = Transcriber::new(deepspeech_model, deepspeech_external_scorer);
         BtfmData {
             data_dir,
-            deepspeech_model,
-            deepspeech_external_scorer,
+            transcriber,
             guild_id: GuildId(guild_id),
             channel_id: ChannelId(channel_id),
             log_channel_id: log_channel_id.map(ChannelId),
@@ -277,27 +276,6 @@ impl EventHandler for Handler {
     }
 }
 
-/// Convert the raw audio to text.
-pub async fn voice_to_text(
-    deepspeech_model: PathBuf,
-    deepspeech_scorer: Option<PathBuf>,
-    audio_buffer: Vec<i16>,
-) -> String {
-    let text = tokio::task::spawn_blocking(move || {
-        let mut deepspeech_model =
-            Model::load_from_files(&deepspeech_model).expect("Unable to load deepspeech model");
-        if let Some(scorer) = &deepspeech_scorer {
-            deepspeech_model.enable_external_scorer(scorer).unwrap();
-        }
-        info!("Successfully loaded voice recognition model");
-        let result = deepspeech_model.speech_to_text(&audio_buffer).unwrap();
-        info!("STT thinks someone said \"{}\"", result);
-        result
-    });
-
-    text.await.unwrap_or_else(|_| "".to_string())
-}
-
 struct User {
     _packet_buffer: Mutex<Vec<i16>>,
     speaking: bool,
@@ -406,9 +384,7 @@ impl VoiceEventHandler for Receiver {
                         .expect("Expected voice manager");
 
                     let mut btfm_data = locked_btfm_data.lock().await;
-                    let deepspeech_model = btfm_data.deepspeech_model.clone();
                     let rate_adjuster = btfm_data.rate_adjuster;
-                    let deepspeech_scorer = btfm_data.deepspeech_external_scorer.clone();
 
                     if let Some(user) = btfm_data.users.get_mut(ssrc) {
                         user.speaking = false;
@@ -427,8 +403,11 @@ impl VoiceEventHandler for Receiver {
                     if let Some(user) = btfm_data.users.get_mut(ssrc) {
                         let voice_data = user.reset().await;
                         let voice_data = discord_to_wav(voice_data, 16_000).await;
-                        let text =
-                            voice_to_text(deepspeech_model, deepspeech_scorer, voice_data).await;
+                        let text = btfm_data
+                            .transcriber
+                            .transcribe_plain_text(voice_data)
+                            .await
+                            .unwrap_or_else(|_| "".to_string());
                         if text.is_empty() {
                             return None;
                         }
