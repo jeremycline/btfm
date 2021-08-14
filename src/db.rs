@@ -106,7 +106,7 @@ impl Clip {
         let ds_model =
             Model::load_from_files(deepspeech_model).expect("Unable to load deepspeech model");
         let audio = file_to_wav(&clip_destination, ds_model.get_sample_rate()).await;
-        let transcriber = crate::transcriber::Transcriber::new(
+        let transcriber = crate::transcribe::Transcriber::new(
             deepspeech_model.to_owned(),
             Some(deepspeech_external_scorer.to_owned()),
         );

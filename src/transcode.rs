@@ -1,15 +1,14 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-use std::process::Stdio;
 use std::io::Cursor;
 use std::path::Path;
+use std::process::Stdio;
 
 use byteorder::{ByteOrder, LittleEndian};
-use log::{info, error};
+use log::{error, info};
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
-
 
 /// Prepare a file for DeepSpeech
 pub async fn file_to_wav(audio: &Path, target_sample: i32) -> Vec<i16> {

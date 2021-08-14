@@ -12,8 +12,8 @@ pub enum Error {
 
 pub mod cli;
 pub mod db;
-pub mod voice;
-mod transcriber;
 mod transcode;
+mod transcribe;
+pub mod voice;
 
 pub const DB_NAME: &str = "btfm.sqlite3";

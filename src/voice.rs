@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-use std::time::{SystemTime, UNIX_EPOCH};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use chrono::NaiveDateTime;
 use log::{debug, error, info, trace, warn};
@@ -28,8 +28,8 @@ use songbird::{
 };
 
 use crate::db;
-use crate::transcriber::Transcriber;
 use crate::transcode::discord_to_wav;
+use crate::transcribe::Transcriber;
 
 pub struct HttpClient;
 impl TypeMapKey for HttpClient {
