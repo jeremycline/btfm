@@ -226,6 +226,7 @@ dependencies = [
 name = "btfm"
 version = "0.13.0"
 dependencies = [
+ "async-trait",
  "audrey",
  "byteorder",
  "chrono",

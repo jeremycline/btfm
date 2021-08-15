@@ -4,7 +4,7 @@ use deepspeech::Model;
 use log::info;
 use tokio::sync::{mpsc, oneshot};
 
-use crate::Error;
+use super::{async_trait, Config, Error, Transcribe};
 
 struct TranscriberWorker {
     model_path: PathBuf,
@@ -47,7 +47,7 @@ impl TranscriberWorker {
                     info!("Successfully loaded voice recognition model");
                     let result = deepspeech_model.speech_to_text(&audio).unwrap();
                     info!("STT thinks someone said \"{}\"", result);
-                    if let Err(_) = respond_to.send(result) {
+                    if respond_to.send(result).is_err() {
                         info!("The transcription requester is gone");
                     }
                 });
@@ -67,15 +67,20 @@ pub struct Transcriber {
     sender: mpsc::Sender<TranscriptionRequest>,
 }
 
-impl Transcriber {
-    pub fn new(model_path: PathBuf, scorer_path: Option<PathBuf>) -> Self {
+#[async_trait]
+impl Transcribe for Transcriber {
+    fn new(config: &Config) -> Self {
         let (sender, receiver) = mpsc::channel(32);
-        let transcriber = TranscriberWorker::new(receiver, model_path, scorer_path);
+        let transcriber = TranscriberWorker::new(
+            receiver,
+            config.deepspeech_model.clone(),
+            config.deepspeech_scorer.clone(),
+        );
         tokio::spawn(start_transcriber(transcriber));
         Self { sender }
     }
 
-    pub async fn transcribe_plain_text(&self, audio: Vec<i16>) -> Result<String, Error> {
+    async fn transcribe_plain_text(&self, audio: Vec<i16>) -> Result<String, Error> {
         let (sender, receiver) = oneshot::channel();
         let request = TranscriptionRequest::PlainText {
             audio,

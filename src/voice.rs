@@ -29,7 +29,7 @@ use songbird::{
 
 use crate::db;
 use crate::transcode::discord_to_wav;
-use crate::transcribe::Transcriber;
+use crate::transcribe::{Config as TranscriberConfig, Transcribe, Transcriber};
 
 pub struct HttpClient;
 impl TypeMapKey for HttpClient {
@@ -58,14 +58,15 @@ impl BtfmData {
     pub fn new(
         data_dir: PathBuf,
         deepspeech_model: PathBuf,
-        deepspeech_external_scorer: Option<PathBuf>,
+        deepspeech_scorer: Option<PathBuf>,
         guild_id: u64,
         channel_id: u64,
         log_channel_id: Option<u64>,
         rate_adjuster: f64,
         db: sqlx::PgPool,
     ) -> BtfmData {
-        let transcriber = Transcriber::new(deepspeech_model, deepspeech_external_scorer);
+        let transcriber_config = TranscriberConfig::new(deepspeech_model, deepspeech_scorer);
+        let transcriber = Transcriber::new(&transcriber_config);
         BtfmData {
             data_dir,
             transcriber,

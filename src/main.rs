@@ -7,15 +7,13 @@ use std::fs;
 use std::sync::Arc;
 
 use serenity::{client::Client, framework::StandardFramework, prelude::*};
-use songbird::{
-    driver::DecodeMode,
-    SerenityInit, Songbird,
-};
+use songbird::{driver::DecodeMode, SerenityInit, Songbird};
 use sqlx::postgres::PgPoolOptions;
 use structopt::StructOpt;
 
+use btfm::transcribe::Transcribe;
 use btfm::voice::{BtfmData, Handler, HttpClient};
-use btfm::{cli, db};
+use btfm::{cli, db, transcode, transcribe};
 
 static MIGRATIONS: sqlx::migrate::Migrator = sqlx::migrate!("./migrations/");
 
@@ -94,16 +92,18 @@ async fn main() {
             } => {
                 fs::create_dir_all(opts.btfm_data_dir.join("clips"))
                     .expect("Unable to create clips directory");
-                db::Clip::insert(
-                    &db_pool,
-                    &opts.btfm_data_dir,
-                    &file,
-                    &description,
-                    &deepspeech_model,
-                    &deepspeech_scorer,
-                )
-                .await
-                .unwrap();
+
+                let transcriber_config =
+                    transcribe::Config::new(deepspeech_model, Some(deepspeech_scorer));
+                let transcriber = transcribe::Transcriber::new(&transcriber_config);
+                let phrase = transcriber
+                    .transcribe_plain_text(transcode::file_to_wav(&file, 16_000).await)
+                    .await
+                    .unwrap();
+
+                db::Clip::insert(&db_pool, &opts.btfm_data_dir, &file, &description, &phrase)
+                    .await
+                    .unwrap();
             }
 
             cli::Clip::Edit {

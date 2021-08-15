@@ -4,12 +4,9 @@
 use std::{fs, path::Path};
 
 use chrono::NaiveDateTime;
-use deepspeech::Model;
 use log::{error, info};
 use rand::{distributions::Alphanumeric, prelude::*};
 use sqlx::PgPool;
-
-use crate::transcode::file_to_wav;
 
 /// Representation of an audio clip in the database.
 ///
@@ -87,11 +84,14 @@ impl Clip {
         btfm_data_dir: &Path,
         file: &Path,
         description: &str,
-        deepspeech_model: &Path,
-        deepspeech_external_scorer: &Path,
+        phrase: &str,
     ) -> Result<Clip, crate::Error> {
         let mut file_prefix = "clips/".to_owned();
-        let random_prefix: String = thread_rng().sample_iter(&Alphanumeric).take(6).map(char::from).collect();
+        let random_prefix: String = thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(6)
+            .map(char::from)
+            .collect();
         file_prefix.push_str(&random_prefix);
         let file_name = file_prefix
             + "-"
@@ -102,15 +102,6 @@ impl Clip {
                 .expect("File name is not valid UTF-8");
         let clip_destination = btfm_data_dir.join(&file_name);
         fs::copy(&file, &clip_destination).expect("Unable to copy clip to data directory");
-
-        let ds_model =
-            Model::load_from_files(deepspeech_model).expect("Unable to load deepspeech model");
-        let audio = file_to_wav(&clip_destination, ds_model.get_sample_rate()).await;
-        let transcriber = crate::transcribe::Transcriber::new(
-            deepspeech_model.to_owned(),
-            Some(deepspeech_external_scorer.to_owned()),
-        );
-        let phrase = transcriber.transcribe_plain_text(audio).await.unwrap();
 
         let insert_result = sqlx::query!(
             "
