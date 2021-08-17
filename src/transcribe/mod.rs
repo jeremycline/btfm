@@ -9,9 +9,15 @@ use async_trait::async_trait;
 
 #[cfg(feature = "deepspeech_cpu")]
 mod deepspeech_cpu;
-use crate::Error;
 #[cfg(feature = "deepspeech_cpu")]
 pub use deepspeech_cpu::Transcriber;
+
+#[cfg(feature = "deepspeech_gpu")]
+mod deepspeech_gpu;
+#[cfg(feature = "deepspeech_gpu")]
+pub use deepspeech_gpu::Transcriber;
+
+use crate::Error;
 
 pub struct Config {
     pub deepspeech_model: PathBuf,

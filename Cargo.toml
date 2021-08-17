@@ -36,6 +36,7 @@ features = ["cache", "framework", "gateway", "standard_framework", "http", "rust
 [features]
 default = ["deepspeech_cpu"]
 deepspeech_cpu = ["deepspeech"]
+deepspeech_gpu = ["deepspeech"]
 
 [profile.release]
 lto = true
