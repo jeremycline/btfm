@@ -100,9 +100,9 @@ dependencies = [
 
 [[package]]
 name = "async-tungstenite"
-version = "0.13.1"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "07b30ef0ea5c20caaa54baea49514a206308989c68be7ecd86c7f956e4da6378"
+checksum = "8645e929ec7964448a901db9da30cd2ae8c7fecf4d6176af427837531dbbb63b"
 dependencies = [
  "futures-io",
  "futures-util",
@@ -1767,12 +1767,12 @@ dependencies = [
 
 [[package]]
 name = "songbird"
-version = "0.2.0-beta.4"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a74f28ec4aa89d478201751ad6cd8f774a5cdccdc8f1a9453e19020a9d655669"
+checksum = "62492c36b6d3ddb342172f57fee6761388062b2b55ab3895aad0b554e51094e7"
 dependencies = [
  "async-trait",
- "async-tungstenite 0.13.1",
+ "async-tungstenite 0.14.0",
  "audiopus",
  "byteorder",
  "dashmap",
