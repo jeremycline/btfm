@@ -3,15 +3,14 @@
 use std::path::PathBuf;
 use structopt::StructOpt;
 
+use crate::config::{load_config, Config};
+
 #[derive(StructOpt, Debug)]
 #[structopt(name = "btfm", about = "Start the btfm service, add audio clips, etc.")]
 pub struct Btfm {
-    /// Path to the BTFM data directory where clips are stored
-    #[structopt(long, parse(from_os_str), env = "BTFM_DATA_DIR")]
-    pub btfm_data_dir: PathBuf,
-    /// PostgreSQL database URL in the format postgres://<user>:<password>@hostname/dbname
-    #[structopt(env = "DATABASE_URL")]
-    pub db_url: String,
+    /// Path to the BTFM configuration file; see btfm.toml.example for details
+    #[structopt(parse(try_from_str = load_config), env = "BTFM_CONFIG")]
+    pub config: Config,
     #[structopt(subcommand)]
     pub command: Command,
 }
@@ -31,27 +30,6 @@ pub enum Command {
         /// Log verbosity (-v for warn, -vv for info, etc)
         #[structopt(short, long, parse(from_occurrences))]
         verbose: usize,
-        /// The Discord API token.
-        #[structopt(long, env = "DISCORD_TOKEN", hide_env_values = true)]
-        discord_token: String,
-        /// Path to the DeepSpeech model directory.
-        #[structopt(long, parse(from_os_str), env = "DEEPSPEECH_MODEL")]
-        deepspeech_model: PathBuf,
-        /// Path to the optional DeepSpeech scorer (increases accuracy)
-        #[structopt(long, parse(from_os_str), env = "DEEPSPEECH_SCORER")]
-        deepspeech_scorer: Option<PathBuf>,
-        /// Discord Channel ID to join.
-        #[structopt(long, env = "CHANNEL_ID")]
-        channel_id: u64,
-        /// Discord Channel ID to log events to
-        #[structopt(long, env = "LOG_CHANNEL_ID")]
-        log_channel_id: Option<u64>,
-        /// Discord Guild ID to join.
-        #[structopt(long, env = "GUILD_ID")]
-        guild_id: u64,
-        /// How much to rate limit the bot. The odds of playing are 1 - e^-(x/rate_adjuster).
-        #[structopt(short, long, default_value = "256", env = "RATE_ADJUSTER")]
-        rate_adjuster: f64,
     },
 
     /// Set a clip to trigger on a given phrase; this will create a new phrase.
@@ -81,12 +59,6 @@ pub enum Clip {
         /// The filename of the clip.
         #[structopt(parse(from_os_str))]
         file: PathBuf,
-        /// Path to the DeepSpeech model directory.
-        #[structopt(long, parse(from_os_str), env = "DEEPSPEECH_MODEL")]
-        deepspeech_model: PathBuf,
-        /// Path to the optional DeepSpeech scorer (increases accuracy)
-        #[structopt(long, parse(from_os_str), env = "DEEPSPEECH_SCORER")]
-        deepspeech_scorer: PathBuf,
     },
     /// Edit an existing clip in the database
     Edit {

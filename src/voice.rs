@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -26,10 +25,12 @@ use songbird::{
     model::payload::{ClientConnect, ClientDisconnect, Speaking},
     Call, CoreEvent, Event, EventContext, EventHandler as VoiceEventHandler,
 };
+use sqlx::postgres::PgPoolOptions;
 
+use crate::config::Config;
 use crate::db;
 use crate::transcode::discord_to_wav;
-use crate::transcribe::{Config as TranscriberConfig, Transcribe, Transcriber};
+use crate::transcribe::{Transcribe, Transcriber};
 
 pub struct HttpClient;
 impl TypeMapKey for HttpClient {
@@ -37,12 +38,11 @@ impl TypeMapKey for HttpClient {
 }
 
 pub struct BtfmData {
-    data_dir: PathBuf,
+    /// Application configuration
+    config: Config,
+    /// Service to handle transcription requests
     transcriber: Transcriber,
-    guild_id: GuildId,
-    channel_id: ChannelId,
-    log_channel_id: Option<ChannelId>,
-    rate_adjuster: f64,
+    /// Map ssrcs to Users
     users: HashMap<u32, User>,
     // Map user IDs to ssrc
     ssrc_map: HashMap<u64, u32>,
@@ -54,26 +54,16 @@ impl TypeMapKey for BtfmData {
     type Value = Arc<Mutex<BtfmData>>;
 }
 impl BtfmData {
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        data_dir: PathBuf,
-        deepspeech_model: PathBuf,
-        deepspeech_scorer: Option<PathBuf>,
-        guild_id: u64,
-        channel_id: u64,
-        log_channel_id: Option<u64>,
-        rate_adjuster: f64,
-        db: sqlx::PgPool,
-    ) -> BtfmData {
-        let transcriber_config = TranscriberConfig::new(deepspeech_model, deepspeech_scorer);
-        let transcriber = Transcriber::new(&transcriber_config);
+    pub async fn new(config: Config) -> BtfmData {
+        let db = PgPoolOptions::new()
+            .max_connections(10)
+            .connect(&config.database_url)
+            .await
+            .expect("Unable to connect to database");
+        let transcriber = Transcriber::new(&config);
         BtfmData {
-            data_dir,
+            config,
             transcriber,
-            guild_id: GuildId(guild_id),
-            channel_id: ChannelId(channel_id),
-            log_channel_id: log_channel_id.map(ChannelId),
-            rate_adjuster,
             users: HashMap::new(),
             ssrc_map: HashMap::new(),
             user_history: HashMap::new(),
@@ -109,22 +99,19 @@ async fn manage_voice_channel(context: &Context) -> bool {
         .expect("Expected BtfmData in TypeMap");
     let mut btfm_data = btfm_data_lock.lock().await;
 
-    if let Ok(channel) = context
-        .http
-        .get_channel(*btfm_data.channel_id.as_u64())
-        .await
-    {
+    if let Ok(channel) = context.http.get_channel(btfm_data.config.channel_id).await {
         match channel.guild() {
             Some(guild_channel) => {
                 if let Ok(members) = guild_channel.members(&context.cache).await {
                     if !members.iter().any(|m| !m.user.bot) {
-                        if let Err(e) = manager.remove(btfm_data.guild_id).await {
+                        if let Err(e) = manager.remove(btfm_data.config.guild_id).await {
                             info!("Failed to remove guild? {:?}", e);
                         }
                         btfm_data.user_history.clear();
-                    } else if manager.get(btfm_data.guild_id).is_none() {
-                        let (handler_lock, result) =
-                            manager.join(btfm_data.guild_id, btfm_data.channel_id).await;
+                    } else if manager.get(btfm_data.config.guild_id).is_none() {
+                        let (handler_lock, result) = manager
+                            .join(btfm_data.config.guild_id, btfm_data.config.channel_id)
+                            .await;
                         if result.is_ok() {
                             let mut handler = handler_lock.lock().await;
                             handler.add_global_event(
@@ -146,7 +133,7 @@ async fn manage_voice_channel(context: &Context) -> bool {
                         } else {
                             error!(
                                 "Unable to join {:?} on {:?}",
-                                &btfm_data.guild_id, &btfm_data.channel_id
+                                &btfm_data.config.guild_id, &btfm_data.config.channel_id
                             );
                         }
                     }
@@ -155,14 +142,14 @@ async fn manage_voice_channel(context: &Context) -> bool {
             None => {
                 error!(
                     "{:?} is not a Guild channel and is not supported!",
-                    btfm_data.channel_id
+                    btfm_data.config.channel_id
                 );
             }
         }
     } else {
         warn!(
             "Unable to retrieve channel details for {:?}, ignoring voice state update.",
-            &btfm_data.channel_id
+            btfm_data.config.channel_id
         );
     }
     false
@@ -170,7 +157,7 @@ async fn manage_voice_channel(context: &Context) -> bool {
 
 /// Return an AudioSource to greet a new user (or the channel at large).
 async fn hello_there(btfm_data: &BtfmData, event_name: &str) -> Option<Input> {
-    let hello = btfm_data.data_dir.join(event_name);
+    let hello = btfm_data.config.data_directory.join(event_name);
     if hello.exists() {
         Some(songbird::ffmpeg(hello).await.unwrap())
     } else {
@@ -216,10 +203,10 @@ impl EventHandler for Handler {
             .expect("Expected BtfmData in TypeMap");
         let mut btfm_data = btfm_data_lock.lock().await;
 
-        if let Some(locked_handler) = manager.get(btfm_data.guild_id) {
+        if let Some(locked_handler) = manager.get(btfm_data.config.guild_id) {
             // This event pertains to the channel we care about.
             let mut handler = locked_handler.lock().await;
-            if Some(btfm_data.channel_id) == new.channel_id {
+            if Some(ChannelId(btfm_data.config.channel_id)) == new.channel_id {
                 match old {
                     Some(old_state) => {
                         // Order matters here, the UI mutes users who deafen
@@ -383,7 +370,7 @@ impl VoiceEventHandler for Receiver {
                         .expect("Expected voice manager");
 
                     let mut btfm_data = locked_btfm_data.lock().await;
-                    let rate_adjuster = btfm_data.rate_adjuster;
+                    let rate_adjuster = btfm_data.config.rate_adjuster;
 
                     if let Some(user) = btfm_data.users.get_mut(&ssrc) {
                         user.speaking = false;
@@ -428,7 +415,7 @@ impl VoiceEventHandler for Receiver {
                         {
                             let msg = format!("The bot heard `{:}`, but was rate-limited", &text);
                             log_event_to_channel(
-                                btfm_data.log_channel_id,
+                                btfm_data.config.log_channel_id.map(ChannelId),
                                 &http_and_cache.http,
                                 &msg,
                             )
@@ -454,21 +441,23 @@ impl VoiceEventHandler for Receiver {
                                 ```{}``` was randomly selected. Phrases that would trigger this clip: {}",
                                 &text, clip_count, &clip, phrases);
                             log_event_to_channel(
-                                btfm_data.log_channel_id,
+                                btfm_data.config.log_channel_id.map(ChannelId),
                                 &http_and_cache.http,
                                 &msg,
                             )
                             .await;
 
-                            let source = songbird::ffmpeg(btfm_data.data_dir.join(clip.audio_file))
-                                .await
-                                .unwrap();
+                            let source = songbird::ffmpeg(
+                                btfm_data.config.data_directory.join(clip.audio_file),
+                            )
+                            .await
+                            .unwrap();
                             let mut call = self.locked_call.lock().await;
                             call.enqueue_source(source);
                         } else {
                             let msg = format!("No phrases matched `{}`", &text);
                             log_event_to_channel(
-                                btfm_data.log_channel_id,
+                                btfm_data.config.log_channel_id.map(ChannelId),
                                 &http_and_cache.http,
                                 &msg,
                             )

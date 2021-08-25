@@ -22,8 +22,8 @@ async fn main() {
     let opts = cli::Btfm::from_args();
 
     let db_pool = PgPoolOptions::new()
-        .max_connections(10)
-        .connect(&opts.db_url)
+        .max_connections(1)
+        .connect(&opts.config.database_url)
         .await
         .expect("Unable to connect to database");
     match MIGRATIONS.run(&db_pool).await {
@@ -35,28 +35,20 @@ async fn main() {
     }
 
     match opts.command {
-        cli::Command::Run {
-            channel_id,
-            log_channel_id,
-            deepspeech_model,
-            deepspeech_scorer,
-            discord_token,
-            guild_id,
-            verbose,
-            rate_adjuster,
-        } => {
+        cli::Command::Run { verbose } => {
             stderrlog::new()
                 .module(module_path!())
                 .verbosity(verbose)
                 .timestamp(stderrlog::Timestamp::Second)
                 .init()
                 .unwrap();
+            drop(db_pool);
 
             let framework = StandardFramework::new();
             let songbird = Songbird::serenity();
             songbird.set_config(songbird::Config::default().decode_mode(DecodeMode::Decode));
 
-            let mut client = Client::builder(&discord_token)
+            let mut client = Client::builder(&opts.config.discord_token)
                 .event_handler(Handler)
                 .framework(framework)
                 .register_songbird_with(songbird)
@@ -66,16 +58,7 @@ async fn main() {
                 let mut data = client.data.write().await;
 
                 data.insert::<HttpClient>(Arc::clone(&client.cache_and_http));
-                data.insert::<BtfmData>(Arc::new(Mutex::new(BtfmData::new(
-                    opts.btfm_data_dir,
-                    deepspeech_model,
-                    deepspeech_scorer,
-                    guild_id,
-                    channel_id,
-                    log_channel_id,
-                    rate_adjuster,
-                    db_pool,
-                ))));
+                data.insert::<BtfmData>(Arc::new(Mutex::new(BtfmData::new(opts.config).await)));
             }
             let _ = client
                 .start()
@@ -84,26 +67,25 @@ async fn main() {
         }
 
         cli::Command::Clip(clip_subcommand) => match clip_subcommand {
-            cli::Clip::Add {
-                description,
-                file,
-                deepspeech_model,
-                deepspeech_scorer,
-            } => {
-                fs::create_dir_all(opts.btfm_data_dir.join("clips"))
+            cli::Clip::Add { description, file } => {
+                fs::create_dir_all(opts.config.data_directory.join("clips"))
                     .expect("Unable to create clips directory");
 
-                let transcriber_config =
-                    transcribe::Config::new(deepspeech_model, Some(deepspeech_scorer));
-                let transcriber = transcribe::Transcriber::new(&transcriber_config);
+                let transcriber = transcribe::Transcriber::new(&opts.config);
                 let phrase = transcriber
                     .transcribe_plain_text(transcode::file_to_wav(&file, 16_000).await)
                     .await
                     .unwrap();
 
-                db::Clip::insert(&db_pool, &opts.btfm_data_dir, &file, &description, &phrase)
-                    .await
-                    .unwrap();
+                db::Clip::insert(
+                    &db_pool,
+                    &opts.config.data_directory,
+                    &file,
+                    &description,
+                    &phrase,
+                )
+                .await
+                .unwrap();
             }
 
             cli::Clip::Edit {
@@ -125,7 +107,9 @@ async fn main() {
 
             cli::Clip::Remove { clip_id } => {
                 let clip = db::Clip::get(&db_pool, clip_id).await.unwrap();
-                clip.remove(&db_pool, &opts.btfm_data_dir).await.unwrap();
+                clip.remove(&db_pool, &opts.config.data_directory)
+                    .await
+                    .unwrap();
             }
         },
 
@@ -190,16 +174,18 @@ async fn main() {
                 .expect("Failed to query the database for clips");
             println!("Clips without audio files:");
             for clip in clips.iter() {
-                let file = opts.btfm_data_dir.join(&clip.audio_file);
+                let file = opts.config.data_directory.join(&clip.audio_file);
                 if !file.exists() {
                     println!("{}", clip);
                     if clean {
-                        clip.remove(&db_pool, &opts.btfm_data_dir).await.unwrap();
+                        clip.remove(&db_pool, &opts.config.data_directory)
+                            .await
+                            .unwrap();
                     }
                 }
             }
 
-            let clip_dir = opts.btfm_data_dir.join("clips");
+            let clip_dir = opts.config.data_directory.join("clips");
             match fs::read_dir(&clip_dir) {
                 Ok(files) => {
                     println!("Audio files without clips:");

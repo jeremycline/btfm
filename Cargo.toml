@@ -13,6 +13,8 @@ repository = "https://github.com/jeremycline/btfm/"
 
 [dependencies]
 async-trait = "0.1"
+toml = "0.5"
+serde = { "version" = "1", features = ["derive"] }
 tokio = { "version" = "1" }
 deepspeech = { "version" = "0.9", "optional" = true }
 structopt = "0.3"
@@ -34,9 +36,8 @@ version = "0.10"
 features = ["cache", "framework", "gateway", "standard_framework", "http", "rustls_backend", "voice", "utils"]
 
 [features]
-default = ["deepspeech_cpu"]
-deepspeech_cpu = ["deepspeech"]
-deepspeech_gpu = ["deepspeech"]
+default = ["deepspeech-recognition"]
+deepspeech-recognition = ["deepspeech"]
 
 [profile.release]
 lto = true

@@ -3,35 +3,15 @@
 /// The behaviour of the transcription worker depends on what backend is
 /// being used to transcribe the audio (DeepSpeech's CPU build, CUDA build, or some
 /// third-party service).
-use std::path::PathBuf;
-
 use async_trait::async_trait;
 
-#[cfg(feature = "deepspeech_cpu")]
-mod deepspeech_cpu;
-#[cfg(feature = "deepspeech_cpu")]
-pub use deepspeech_cpu::Transcriber;
+#[cfg(feature = "deepspeech-recognition")]
+mod deepspeech;
+#[cfg(feature = "deepspeech-recognition")]
+pub use crate::transcribe::deepspeech::Transcriber;
 
-#[cfg(feature = "deepspeech_gpu")]
-mod deepspeech_gpu;
-#[cfg(feature = "deepspeech_gpu")]
-pub use deepspeech_gpu::Transcriber;
-
+use crate::config::Config;
 use crate::Error;
-
-pub struct Config {
-    pub deepspeech_model: PathBuf,
-    pub deepspeech_scorer: Option<PathBuf>,
-}
-
-impl Config {
-    pub fn new(deepspeech_model: PathBuf, deepspeech_scorer: Option<PathBuf>) -> Self {
-        Config {
-            deepspeech_model,
-            deepspeech_scorer,
-        }
-    }
-}
 
 #[async_trait]
 pub trait Transcribe {
