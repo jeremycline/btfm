@@ -1,6 +1,8 @@
-// SPDX-License-Identifier: GPL-2.0-or-later
+//! Handlers for Discord voice channels.
+//!
+//! Serenity does not ship with direct support for voice channels. Instead,
+//! support is provided via Songbird.
 
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -9,15 +11,7 @@ use log::{debug, error, info, trace, warn};
 use rand::prelude::*;
 
 use serenity::{
-    async_trait,
-    client::{Context, EventHandler},
-    http::client::Http,
-    model::{
-        gateway::Ready,
-        id::{ChannelId, GuildId},
-        voice::VoiceState,
-    },
-    prelude::*,
+    async_trait, client::Context, http::client::Http, model::id::ChannelId, prelude::*,
 };
 
 use songbird::{
@@ -25,52 +19,12 @@ use songbird::{
     model::payload::{ClientConnect, ClientDisconnect, Speaking},
     Call, CoreEvent, Event, EventContext, EventHandler as VoiceEventHandler,
 };
-use sqlx::postgres::PgPoolOptions;
 
-use crate::config::Config;
+use super::text::HttpClient;
+use super::{BtfmData, User};
 use crate::db;
 use crate::transcode::discord_to_wav;
-use crate::transcribe::{Transcribe, Transcriber};
-
-pub struct HttpClient;
-impl TypeMapKey for HttpClient {
-    type Value = Arc<serenity::CacheAndHttp>;
-}
-
-pub struct BtfmData {
-    /// Application configuration
-    config: Config,
-    /// Service to handle transcription requests
-    transcriber: Transcriber,
-    /// Map ssrcs to Users
-    users: HashMap<u32, User>,
-    // Map user IDs to ssrc
-    ssrc_map: HashMap<u64, u32>,
-    // How many times the given user has joined the channel so we can give them rejoin messages.
-    user_history: HashMap<u64, u32>,
-    db: sqlx::PgPool,
-}
-impl TypeMapKey for BtfmData {
-    type Value = Arc<Mutex<BtfmData>>;
-}
-impl BtfmData {
-    pub async fn new(config: Config) -> BtfmData {
-        let db = PgPoolOptions::new()
-            .max_connections(10)
-            .connect(&config.database_url)
-            .await
-            .expect("Unable to connect to database");
-        let transcriber = Transcriber::new(&config);
-        BtfmData {
-            config,
-            transcriber,
-            users: HashMap::new(),
-            ssrc_map: HashMap::new(),
-            user_history: HashMap::new(),
-            db,
-        }
-    }
-}
+use crate::transcribe::Transcribe;
 
 /// Join or part from the configured voice channel. Called on startup and
 /// if an event happens for the voice channel. If the bot is the only user in the
@@ -84,7 +38,7 @@ impl BtfmData {
 /// # Returns
 ///
 /// true if it created a new connection, false otherwise.
-async fn manage_voice_channel(context: &Context) -> bool {
+pub async fn manage_voice_channel(context: &Context) -> bool {
     let manager = songbird::get(context)
         .await
         .expect("Songbird client missing")
@@ -156,136 +110,12 @@ async fn manage_voice_channel(context: &Context) -> bool {
 }
 
 /// Return an AudioSource to greet a new user (or the channel at large).
-async fn hello_there(btfm_data: &BtfmData, event_name: &str) -> Option<Input> {
+pub async fn hello_there(btfm_data: &BtfmData, event_name: &str) -> Option<Input> {
     let hello = btfm_data.config.data_directory.join(event_name);
     if hello.exists() {
         Some(songbird::ffmpeg(hello).await.unwrap())
     } else {
         None
-    }
-}
-
-pub struct Handler;
-
-#[async_trait]
-impl EventHandler for Handler {
-    async fn ready(&self, context: Context, ready: Ready) {
-        info!("Connected as {}", ready.user.name);
-        manage_voice_channel(&context).await;
-    }
-
-    async fn voice_state_update(
-        &self,
-        context: Context,
-        guild_id: Option<GuildId>,
-        old: Option<VoiceState>,
-        new: VoiceState,
-    ) {
-        if guild_id.is_none() {
-            return;
-        }
-
-        debug!("voice_state_update: old={:?}  new={:?}", old, new);
-        if manage_voice_channel(&context).await {
-            return;
-        }
-
-        let manager = songbird::get(&context)
-            .await
-            .expect("Songbird client missing")
-            .clone();
-        let btfm_data_lock = context
-            .data
-            .read()
-            .await
-            .get::<BtfmData>()
-            .cloned()
-            .expect("Expected BtfmData in TypeMap");
-        let mut btfm_data = btfm_data_lock.lock().await;
-
-        if let Some(locked_handler) = manager.get(btfm_data.config.guild_id) {
-            // This event pertains to the channel we care about.
-            let mut handler = locked_handler.lock().await;
-            if Some(ChannelId(btfm_data.config.channel_id)) == new.channel_id {
-                match old {
-                    Some(old_state) => {
-                        // Order matters here, the UI mutes users who deafen
-                        // themselves so look at deafen events before dealing
-                        // with muting
-                        if old_state.self_deaf != new.self_deaf && new.self_deaf {
-                            debug!("Someone deafened themselves in a channel we care about");
-                            hello_there(&btfm_data, "deaf")
-                                .await
-                                .map(|s| Some(handler.play_source(s)));
-                        } else if old_state.self_deaf != new.self_deaf && !new.self_deaf {
-                            debug!("Someone un-deafened themselves in a channel we care about");
-                            hello_there(&btfm_data, "undeaf")
-                                .await
-                                .map(|s| Some(handler.play_source(s)));
-                        } else if old_state.self_mute != new.self_mute && new.self_mute {
-                            debug!("Someone muted in the channel we care about");
-                            hello_there(&btfm_data, "mute")
-                                .await
-                                .map(|s| Some(handler.play_source(s)));
-                        } else if old_state.self_mute != new.self_mute && !new.self_mute {
-                            debug!("Someone un-muted in the channel we care about");
-                            hello_there(&btfm_data, "unmute")
-                                .await
-                                .map(|s| Some(handler.play_source(s)));
-                        }
-                    }
-                    None => {
-                        debug!("User just joined our channel");
-                        hello_there(&btfm_data, "hello")
-                            .await
-                            .map(|s| Some(handler.play_source(s)));
-                        let join_count = btfm_data
-                            .user_history
-                            .entry(*new.user_id.as_u64())
-                            .or_insert(0);
-                        *join_count += 1;
-                        if *join_count > 1 {
-                            info!("Someone just rejoined; let them know how we feel");
-                            let rng: f64 = rand::random();
-                            if 1_f64 - (*join_count as f64 * 0.1).exp() > rng {
-                                hello_there(&btfm_data, "rejoin")
-                                    .await
-                                    .map(|s| Some(handler.play_source(s)));
-                            }
-                        }
-                    }
-                }
-                info!("user_history={:?}", &btfm_data.user_history);
-            }
-        }
-    }
-}
-
-struct User {
-    _packet_buffer: Mutex<Vec<i16>>,
-    speaking: bool,
-}
-
-impl User {
-    pub fn new() -> User {
-        User {
-            _packet_buffer: Mutex::new(Vec::new()),
-            speaking: false,
-        }
-    }
-}
-
-impl User {
-    pub async fn push(&mut self, audio: &[i16]) {
-        let mut buf = self._packet_buffer.lock().await;
-        buf.extend(audio);
-    }
-
-    pub async fn reset(&mut self) -> Vec<i16> {
-        let mut voice_data = self._packet_buffer.lock().await;
-        let cloned_data = voice_data.clone();
-        voice_data.clear();
-        cloned_data
     }
 }
 

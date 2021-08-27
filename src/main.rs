@@ -11,8 +11,11 @@ use songbird::{driver::DecodeMode, SerenityInit, Songbird};
 use sqlx::postgres::PgPoolOptions;
 use structopt::StructOpt;
 
+use btfm::discord::{
+    text::{Handler, HttpClient},
+    BtfmData,
+};
 use btfm::transcribe::Transcribe;
-use btfm::voice::{BtfmData, Handler, HttpClient};
 use btfm::{cli, db, transcode, transcribe};
 
 static MIGRATIONS: sqlx::migrate::Migrator = sqlx::migrate!("./migrations/");
