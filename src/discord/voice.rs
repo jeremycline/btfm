@@ -237,7 +237,7 @@ impl VoiceEventHandler for Receiver {
                 if let Some(audio) = audio {
                     if user.transcriber.is_none() {
                         let (audio_sender, audio_receiver) = mpsc::channel(2048);
-                        let text_receiver = transcriber.stream_plain_text(audio_receiver).await;
+                        let text_receiver = transcriber.stream(audio_receiver).await;
                         let locked_call = self.locked_call.clone();
                         tokio::task::spawn(handle_text(
                             locked_btfm_data.clone(),

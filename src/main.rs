@@ -78,7 +78,7 @@ async fn main() {
 
                 let transcriber = transcribe::Transcriber::new(&opts.config, &Backend::default());
                 let phrase = transcriber
-                    .transcribe_plain_text(transcode::file_to_wav(&file, 16_000).await)
+                    .plain_text(transcode::file_to_wav(&file, 16_000).await)
                     .await
                     .unwrap();
 

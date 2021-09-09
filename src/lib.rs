@@ -20,15 +20,14 @@ pub enum Error {
 arg_enum! {
 #[derive(Debug)]
 pub enum Backend {
-    DeepSpeechCpu,
-    DeepSpeechGpu,
+    DeepSpeech,
     Deepgram,
 }
 }
 
 impl Default for Backend {
     fn default() -> Self {
-        Backend::DeepSpeechCpu
+        Backend::DeepSpeech
     }
 }
 

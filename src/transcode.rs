@@ -86,9 +86,9 @@ pub fn wrap_pcm(audio: Vec<i16>) -> Vec<u8> {
 pub async fn discord_to_wav(voice_data: Vec<i16>, target_sample: u32) -> Vec<i16> {
     let data = Vec::<u8>::with_capacity(voice_data.len() * 2);
     let mut cursor = Cursor::new(data);
-    // Convert audio to mono, at the sample rate of the deepspeech model, and trim silence
-    // from the clip via ffmpeg. This is pretty hacky, but it works okay and we're not going
-    // to Mars here.
+    // Convert audio to mono, at the sample rate of the deepspeech model, and add a bit
+    // of silence to the beginning and end of the audio, which appears to help DeepSpeech
+    // not clip the beginning of the transcription
     let mut ffmpeg = Command::new("ffmpeg")
         .args(&[
             "-f",
@@ -106,7 +106,9 @@ pub async fn discord_to_wav(voice_data: Vec<i16>, target_sample: u32) -> Vec<i16
             "-ac",
             "1",
             "-af",
-            "silenceremove=1:0:-50dB",
+            "adelay=2s:all=true",
+            "-af",
+            "apad=pad_dur=2",
             "pipe:1",
         ])
         .stdout(Stdio::piped())

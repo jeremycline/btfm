@@ -5,14 +5,11 @@
 /// third-party service).
 use tokio::sync::{mpsc, oneshot};
 
-#[cfg(feature = "deepspeech-recognition")]
-mod deepspeech;
-
-#[cfg(feature = "deepgram-recognition")]
-mod deepgram;
-
 use crate::config::Config;
 use crate::{Backend, Error};
+
+mod deepgram;
+mod deepspeech;
 
 #[derive(Debug)]
 pub enum TranscriptionRequest {
@@ -38,7 +35,6 @@ impl Transcriber {
         let (sender, receiver) = mpsc::channel(32);
 
         match backend {
-            #[cfg(feature = "deepgram-recognition")]
             Backend::Deepgram => {
                 let mut worker = deepgram::TranscriberWorker::new(
                     receiver,
@@ -47,13 +43,11 @@ impl Transcriber {
                 );
                 tokio::spawn(async move { worker.run().await });
             }
-            #[cfg(feature = "deepspeech-recognition")]
-            Backend::DeepSpeechCpu | Backend::DeepSpeechGpu => {
+            Backend::DeepSpeech => {
                 let mut worker = deepspeech::TranscriberWorker::new(
                     receiver,
                     config.deepspeech.model.clone(),
                     config.deepspeech.scorer.clone(),
-                    config.deepspeech.gpu,
                 );
                 tokio::spawn(async move { worker.run().await });
             }
@@ -62,8 +56,8 @@ impl Transcriber {
         Self { sender }
     }
 
-    /// Transcribe PCM audio to plain, unannotated text
-    pub async fn transcribe_plain_text(&self, audio: Vec<i16>) -> Result<String, Error> {
+    /// Convenience function to convert
+    pub async fn plain_text(&self, audio: Vec<i16>) -> Result<String, Error> {
         let (sender, receiver) = oneshot::channel();
         let request = TranscriptionRequest::PlainText {
             audio,
@@ -74,10 +68,10 @@ impl Transcriber {
         receiver.await.or(Err(Error::TranscriberGone))
     }
 
-    pub async fn stream_plain_text(
-        &self,
-        audio: mpsc::Receiver<Vec<i16>>,
-    ) -> mpsc::Receiver<String> {
+    /// Stream audio to the transcriber and receive a stream of text back
+    ///
+    /// Audio is expected to be stereo signed 16 bit PCM at 48khz
+    pub async fn stream(&self, audio: mpsc::Receiver<Vec<i16>>) -> mpsc::Receiver<String> {
         let (respond_to, text_receiver) = mpsc::channel(256);
 
         let request = TranscriptionRequest::Stream { audio, respond_to };

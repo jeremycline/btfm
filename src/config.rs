@@ -21,10 +21,8 @@ pub struct Config {
     pub guild_id: u64,
     /// How much to rate limit the bot. The odds of playing are 1 - e^-(x/rate_adjuster).
     pub rate_adjuster: f64,
-    #[cfg(feature = "deepspeech-recognition")]
     /// DeepSpeech-specific configuration options
     pub deepspeech: DeepSpeech,
-    #[cfg(feature = "deepgram-recognition")]
     /// Deepgram-specific configuration options
     pub deepgram: Deepgram,
 }
@@ -76,9 +74,7 @@ impl Default for Config {
             log_channel_id: None,
             guild_id: 0,
             rate_adjuster: 120.0,
-            #[cfg(feature = "deepspeech-recognition")]
             deepspeech: DeepSpeech::default(),
-            #[cfg(feature = "deepgram-recognition")]
             deepgram: Deepgram::default(),
         }
     }

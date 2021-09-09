@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use deepspeech::Model;
 use log::info;
@@ -11,7 +11,6 @@ pub struct TranscriberWorker {
     model_path: PathBuf,
     scorer_path: Option<PathBuf>,
     receiver: mpsc::Receiver<TranscriptionRequest>,
-    gpu_sender: Option<mpsc::Sender<TranscriptionRequest>>,
 }
 
 impl TranscriberWorker {
@@ -19,97 +18,31 @@ impl TranscriberWorker {
         receiver: mpsc::Receiver<TranscriptionRequest>,
         model_path: PathBuf,
         scorer_path: Option<PathBuf>,
-        gpu: bool,
     ) -> Self {
-        let gpu_sender = {
-            if gpu {
-                let (gpu_sender, mut gpu_receiver) = mpsc::channel(64);
-                let rt_handle = Handle::current();
-                let model_path = model_path.clone();
-                let scorer_path = scorer_path.clone();
-
-                // TODO I should handle the case where the thread dies
-                tokio::task::spawn_blocking(move || {
-                    let mut deepspeech_model = Model::load_from_files(&model_path)
-                        .expect("Unable to load deepspeech model");
-                    if let Some(scorer) = scorer_path {
-                        deepspeech_model.enable_external_scorer(&scorer).unwrap();
-                    }
-                    info!("Successfully loaded voice recognition model");
-                    loop {
-                        match rt_handle.block_on(gpu_receiver.recv()) {
-                            Some(request) => match request {
-                                TranscriptionRequest::PlainText { audio, respond_to } => {
-                                    let result = deepspeech_model.speech_to_text(&audio).unwrap();
-                                    info!("STT thinks someone said \"{}\"", result);
-                                    if respond_to.send(result).is_err() {
-                                        info!("The transcription requester is gone");
-                                    }
-                                }
-                                TranscriptionRequest::Stream {
-                                    mut audio,
-                                    respond_to,
-                                } => {
-                                    let buffer = rt_handle.block_on(async move {
-                                        let mut buffer = Vec::new();
-                                        while let Some(mut snippet) = audio.recv().await {
-                                            buffer.append(&mut snippet)
-                                        }
-                                        buffer
-                                    });
-                                    let result = deepspeech_model.speech_to_text(&buffer).unwrap();
-                                    info!("STT thinks someone said \"{}\"", result);
-                                    rt_handle.block_on(async move {
-                                        if respond_to.send(result).await.is_err() {
-                                            info!("The transcription requester is gone");
-                                        }
-                                    });
-                                }
-                            },
-                            None => {
-                                info!("Shutting down GPU transcription thread");
-                                break;
-                            }
-                        }
-                    }
-                });
-                Some(gpu_sender)
-            } else {
-                None
-            }
-        };
         TranscriberWorker {
             model_path,
             scorer_path,
             receiver,
-            gpu_sender,
         }
     }
 
     pub fn transcribe(&mut self, request: TranscriptionRequest) {
-        if let Some(gpu_sender) = &self.gpu_sender {
-            let sender = gpu_sender.clone();
-            tokio::task::spawn(async move {
-                let _ = sender.send(request).await;
-            });
-            return;
-        }
-
         match request {
             TranscriptionRequest::PlainText { audio, respond_to } => {
                 let model_path = self.model_path.clone();
                 let scorer_path = self.scorer_path.clone();
+                let rt_handle = Handle::current();
 
-                let _ = tokio::task::spawn_blocking(move || {
-                    let mut deepspeech_model = Model::load_from_files(&model_path)
-                        .expect("Unable to load deepspeech model");
-                    if let Some(scorer) = scorer_path {
-                        deepspeech_model.enable_external_scorer(&scorer).unwrap();
-                    }
-                    info!("Successfully loaded voice recognition model");
-                    let result = deepspeech_model.speech_to_text(&audio).unwrap();
-                    info!("STT thinks someone said \"{}\"", result);
-                    if respond_to.send(result).is_err() {
+                tokio::task::spawn_blocking(move || {
+                    if respond_to
+                        .send(blocking_transcribe(
+                            &model_path,
+                            scorer_path.as_ref(),
+                            rt_handle,
+                            audio,
+                        ))
+                        .is_err()
+                    {
                         info!("The transcription requester is gone");
                     }
                 });
@@ -118,8 +51,7 @@ impl TranscriberWorker {
                 mut audio,
                 respond_to,
             } => {
-                // Deepspeech supports streaming, but we're going to fake it here because streaming with
-                // GPU support gets wonky
+                // Deepspeech supports streaming, but we're going to fake it here to get started with.
                 let model_path = self.model_path.clone();
                 let scorer_path = self.scorer_path.clone();
 
@@ -131,20 +63,7 @@ impl TranscriberWorker {
                     let rt_handle = Handle::current();
 
                     let result = tokio::task::spawn_blocking(move || {
-                        let mut deepspeech_model = Model::load_from_files(&model_path)
-                            .expect("Unable to load deepspeech model");
-                        if let Some(scorer) = scorer_path {
-                            deepspeech_model.enable_external_scorer(&scorer).unwrap();
-                        }
-                        let sample_rate = deepspeech_model.get_sample_rate() as u32;
-
-                        let buffer = rt_handle
-                            .block_on(async move { discord_to_wav(buffer, sample_rate).await });
-
-                        info!("Successfully loaded voice recognition model");
-                        let result = deepspeech_model.speech_to_text(&buffer).unwrap();
-                        info!("STT thinks someone said \"{}\"", result);
-                        result
+                        blocking_transcribe(&model_path, scorer_path.as_ref(), rt_handle, buffer)
                     })
                     .await;
                     if let Ok(text) = result {
@@ -162,4 +81,25 @@ impl TranscriberWorker {
             self.transcribe(request);
         }
     }
+}
+
+fn blocking_transcribe(
+    model_path: &Path,
+    scorer_path: Option<&PathBuf>,
+    rt_handle: Handle,
+    audio: Vec<i16>,
+) -> String {
+    let mut deepspeech_model =
+        Model::load_from_files(model_path).expect("Unable to load deepspeech model");
+    if let Some(scorer) = scorer_path {
+        deepspeech_model.enable_external_scorer(scorer).unwrap();
+    }
+    let sample_rate = deepspeech_model.get_sample_rate() as u32;
+
+    let buffer = rt_handle.block_on(async move { discord_to_wav(audio, sample_rate).await });
+
+    info!("Successfully loaded voice recognition model");
+    let result = deepspeech_model.speech_to_text(&buffer).unwrap();
+    info!("STT thinks someone said \"{}\"", result);
+    result
 }
