@@ -307,11 +307,12 @@ async fn handle_text(
     while let Some(snippet) = receiver.recv().await {
         snippets.push(snippet);
     }
-    if snippets.is_empty() {
+    let text = snippets.join(" ");
+    if text.trim().is_empty() {
+        info!("It didn't sound like anything to the bot");
         return;
     }
 
-    let text = snippets.join(" ");
     let current_time = NaiveDateTime::from_timestamp(
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
