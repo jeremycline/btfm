@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
+use clap::arg_enum;
 use thiserror::Error as ThisError;
 
 /// An enumeration of errors BTFM library functions can encounter.
@@ -12,6 +13,23 @@ pub enum Error {
     ConfigReadError(#[from] std::io::Error),
     #[error("Configuration file could not be parsed: {0}")]
     ConfigParseError(#[from] toml::de::Error),
+    #[error("Invalid backend provided")]
+    BackendParseError,
+}
+
+arg_enum! {
+#[derive(Debug)]
+pub enum Backend {
+    DeepSpeechCpu,
+    DeepSpeechGpu,
+    Deepgram,
+}
+}
+
+impl Default for Backend {
+    fn default() -> Self {
+        Backend::DeepSpeechCpu
+    }
 }
 
 pub mod cli;

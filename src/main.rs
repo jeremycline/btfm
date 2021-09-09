@@ -15,8 +15,7 @@ use btfm::discord::{
     text::{Handler, HttpClient},
     BtfmData,
 };
-use btfm::transcribe::Transcribe;
-use btfm::{cli, db, transcode, transcribe};
+use btfm::{cli, db, transcode, transcribe, Backend};
 
 static MIGRATIONS: sqlx::migrate::Migrator = sqlx::migrate!("./migrations/");
 
@@ -38,7 +37,7 @@ async fn main() {
     }
 
     match opts.command {
-        cli::Command::Run { verbose } => {
+        cli::Command::Run { verbose, backend } => {
             stderrlog::new()
                 .module(module_path!())
                 .verbosity(verbose)
@@ -48,6 +47,7 @@ async fn main() {
             drop(db_pool);
 
             let framework = StandardFramework::new();
+            // Configure Songbird to decode audio to signed 16 bit-per-same stereo PCM.
             let songbird = Songbird::serenity();
             songbird.set_config(songbird::Config::default().decode_mode(DecodeMode::Decode));
 
@@ -61,7 +61,9 @@ async fn main() {
                 let mut data = client.data.write().await;
 
                 data.insert::<HttpClient>(Arc::clone(&client.cache_and_http));
-                data.insert::<BtfmData>(Arc::new(Mutex::new(BtfmData::new(opts.config).await)));
+                data.insert::<BtfmData>(Arc::new(Mutex::new(
+                    BtfmData::new(opts.config, backend).await,
+                )));
             }
             let _ = client
                 .start()
@@ -74,7 +76,7 @@ async fn main() {
                 fs::create_dir_all(opts.config.data_directory.join("clips"))
                     .expect("Unable to create clips directory");
 
-                let transcriber = transcribe::Transcriber::new(&opts.config);
+                let transcriber = transcribe::Transcriber::new(&opts.config, &Backend::default());
                 let phrase = transcriber
                     .transcribe_plain_text(transcode::file_to_wav(&file, 16_000).await)
                     .await

@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use structopt::StructOpt;
 
 use crate::config::{load_config, Config};
+use crate::Backend;
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "btfm", about = "Start the btfm service, add audio clips, etc.")]
@@ -30,6 +31,8 @@ pub enum Command {
         /// Log verbosity (-v for warn, -vv for info, etc)
         #[structopt(short, long, parse(from_occurrences))]
         verbose: usize,
+        #[structopt(short, long, possible_values = &Backend::variants(), case_insensitive = true, default_value)]
+        backend: Backend,
     },
 
     /// Set a clip to trigger on a given phrase; this will create a new phrase.

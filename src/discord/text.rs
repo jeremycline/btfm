@@ -44,9 +44,7 @@ impl EventHandler for Handler {
         }
 
         debug!("voice_state_update: old={:?}  new={:?}", old, new);
-        if manage_voice_channel(&context).await {
-            return;
-        }
+        manage_voice_channel(&context).await;
 
         let manager = songbird::get(&context)
             .await

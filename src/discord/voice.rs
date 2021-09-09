@@ -9,22 +9,20 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use chrono::NaiveDateTime;
 use log::{debug, error, info, trace, warn};
 use rand::prelude::*;
-
+use serenity::CacheAndHttp;
 use serenity::{
     async_trait, client::Context, http::client::Http, model::id::ChannelId, prelude::*,
 };
-
 use songbird::{
     input::Input,
     model::payload::{ClientConnect, ClientDisconnect, Speaking},
     Call, CoreEvent, Event, EventContext, EventHandler as VoiceEventHandler,
 };
+use tokio::sync::mpsc;
 
 use super::text::HttpClient;
 use super::{BtfmData, User};
 use crate::db;
-use crate::transcode::discord_to_wav;
-use crate::transcribe::Transcribe;
 
 /// Join or part from the configured voice channel. Called on startup and
 /// if an event happens for the voice channel. If the bot is the only user in the
@@ -34,11 +32,7 @@ use crate::transcribe::Transcribe;
 ///
 /// `context` - The serenity context for the event. Either when the ready event
 ///             fires or a user joins/parts/mutes/etc.
-///
-/// # Returns
-///
-/// true if it created a new connection, false otherwise.
-pub async fn manage_voice_channel(context: &Context) -> bool {
+pub async fn manage_voice_channel(context: &Context) {
     let manager = songbird::get(context)
         .await
         .expect("Songbird client missing")
@@ -106,7 +100,6 @@ pub async fn manage_voice_channel(context: &Context) -> bool {
             btfm_data.config.channel_id
         );
     }
-    false
 }
 
 /// Return an AudioSource to greet a new user (or the channel at large).
@@ -166,11 +159,12 @@ impl VoiceEventHandler for Receiver {
                         .get::<BtfmData>()
                         .cloned()
                         .expect("Expected voice manager");
-                    let mut btfm_data = locked_btfm_data.lock().await;
 
+                    let mut btfm_data = locked_btfm_data.lock().await;
                     if let Some(user) = btfm_data.users.get_mut(&ssrc) {
                         user.speaking = true;
                     }
+                    drop(btfm_data);
 
                     let call = self.locked_call.lock().await;
                     if let Some(track) = call.queue().current() {
@@ -185,13 +179,6 @@ impl VoiceEventHandler for Receiver {
                         }
                     }
                 } else {
-                    let http_and_cache = Arc::clone(&self.client_data)
-                        .read()
-                        .await
-                        .get::<HttpClient>()
-                        .cloned()
-                        .expect("Expected HttpClient in TypeMap");
-
                     let locked_btfm_data = Arc::clone(&self.client_data)
                         .read()
                         .await
@@ -200,13 +187,11 @@ impl VoiceEventHandler for Receiver {
                         .expect("Expected voice manager");
 
                     let mut btfm_data = locked_btfm_data.lock().await;
-                    let rate_adjuster = btfm_data.config.rate_adjuster;
-
                     if let Some(user) = btfm_data.users.get_mut(&ssrc) {
                         user.speaking = false;
                     }
 
-                    // We pause playback if people are speaking; make sure to resume if everyone is quiet.
+                    // Bump the clip volume back up if no one is talking
                     if btfm_data.users.values().all(|user| !user.speaking) {
                         let call = self.locked_call.lock().await;
                         if let Some(track) = call.queue().current() {
@@ -217,82 +202,10 @@ impl VoiceEventHandler for Receiver {
                     }
 
                     if let Some(user) = btfm_data.users.get_mut(&ssrc) {
-                        let voice_data = user.reset().await;
-                        let voice_data = discord_to_wav(voice_data, 16_000).await;
-                        let text = btfm_data
-                            .transcriber
-                            .transcribe_plain_text(voice_data)
-                            .await
-                            .unwrap_or_else(|_| "".to_string());
-                        if text.is_empty() {
-                            return None;
-                        }
-
-                        let current_time = NaiveDateTime::from_timestamp(
-                            SystemTime::now()
-                                .duration_since(UNIX_EPOCH)
-                                .expect("It's time to check your system clock")
-                                .as_secs() as i64,
-                            0,
-                        );
-                        if !text.contains("excuse me")
-                            && rate_limit(
-                                db::last_play_time(&btfm_data.db).await,
-                                current_time,
-                                rate_adjuster,
-                                &mut rand::thread_rng(),
-                            )
-                        {
-                            let msg = format!("The bot heard `{:}`, but was rate-limited", &text);
-                            log_event_to_channel(
-                                btfm_data.config.log_channel_id.map(ChannelId),
-                                &http_and_cache.http,
-                                &msg,
-                            )
-                            .await;
-                            return None;
-                        }
-
-                        let clips = db::match_phrase(&btfm_data.db, &text).await.unwrap();
-                        let clip_count = clips.len();
-                        let clip = clips.into_iter().choose(&mut rand::thread_rng());
-                        if let Some(mut clip) = clip {
-                            clip.mark_played(&btfm_data.db).await.unwrap();
-
-                            let phrases = db::phrases_for_clip(&btfm_data.db, clip.id)
-                                .await
-                                .unwrap_or_else(|_| vec![])
-                                .iter()
-                                .map(|p| format!("`{}`", &p.phrase))
-                                .collect::<Vec<String>>()
-                                .join(", ");
-                            let msg = format!(
-                                "This technological terror heard `{:}`, which matched against {} clips;
-                                ```{}``` was randomly selected. Phrases that would trigger this clip: {}",
-                                &text, clip_count, &clip, phrases);
-                            log_event_to_channel(
-                                btfm_data.config.log_channel_id.map(ChannelId),
-                                &http_and_cache.http,
-                                &msg,
-                            )
-                            .await;
-
-                            let source = songbird::ffmpeg(
-                                btfm_data.config.data_directory.join(clip.audio_file),
-                            )
-                            .await
-                            .unwrap();
-                            let mut call = self.locked_call.lock().await;
-                            call.enqueue_source(source);
-                        } else {
-                            let msg = format!("No phrases matched `{}`", &text);
-                            log_event_to_channel(
-                                btfm_data.config.log_channel_id.map(ChannelId),
-                                &http_and_cache.http,
-                                &msg,
-                            )
-                            .await;
-                        }
+                        // This closes the audio sending channel which causes the worker to hang up the text
+                        // sending channel channel, which causes the handle_text() function to break from its
+                        // receiving loop and look for a clip match.
+                        user.transcriber.take();
                     }
                 }
             }
@@ -304,21 +217,41 @@ impl VoiceEventHandler for Receiver {
                     packet.ssrc,
                     packet.sequence.0,
                 );
-                let locked_client_data = Arc::clone(&self.client_data)
+                let locked_btfm_data = Arc::clone(&self.client_data)
                     .read()
                     .await
                     .get::<BtfmData>()
                     .cloned()
                     .expect("Expected voice manager");
-                let mut client_data = locked_client_data.lock().await;
+                let mut btfm_data = locked_btfm_data.lock().await;
+                let http_and_cache = Arc::clone(&self.client_data)
+                    .read()
+                    .await
+                    .get::<HttpClient>()
+                    .cloned()
+                    .expect("Expected HttpClient in TypeMap");
 
-                let user = client_data
-                    .users
-                    .entry(packet.ssrc)
-                    .or_insert_with(User::new);
+                let transcriber = &btfm_data.transcriber.clone();
+                let user = btfm_data.users.entry(packet.ssrc).or_insert_with(User::new);
 
                 if let Some(audio) = audio {
-                    user.push(audio).await;
+                    if user.transcriber.is_none() {
+                        let (audio_sender, audio_receiver) = mpsc::channel(2048);
+                        let text_receiver = transcriber.stream_plain_text(audio_receiver).await;
+                        let locked_call = self.locked_call.clone();
+                        tokio::task::spawn(handle_text(
+                            locked_btfm_data.clone(),
+                            http_and_cache,
+                            locked_call,
+                            text_receiver,
+                        ));
+                        user.transcriber = Some(audio_sender);
+                    }
+                    if let Some(transcriber) = &user.transcriber {
+                        if let Err(e) = transcriber.send(audio.to_vec()).await {
+                            warn!("Failed to send audio to transcriber: {:?}", e);
+                        }
+                    }
                 } else {
                     error!("RTP packet event received, but there was no audio. Decode support may not be enabled?");
                 }
@@ -339,6 +272,7 @@ impl VoiceEventHandler for Receiver {
                 let mut btfm_data = locked_btfm_data.lock().await;
                 btfm_data.ssrc_map.entry(user_id.0).or_insert(*audio_ssrc);
             }
+
             EventContext::ClientDisconnect(ClientDisconnect { user_id, .. }) => {
                 debug!("User ({}) disconnected", user_id);
                 let locked_btfm_data = Arc::clone(&self.client_data)
@@ -358,6 +292,90 @@ impl VoiceEventHandler for Receiver {
         }
 
         None
+    }
+}
+
+/// A task to find and play audio clips when the speech has been transcribed
+async fn handle_text(
+    btfm_data: Arc<Mutex<BtfmData>>,
+    http_client: Arc<CacheAndHttp>,
+    call: Arc<Mutex<Call>>,
+    text_receiver: mpsc::Receiver<String>,
+) {
+    let mut snippets = Vec::new();
+    let mut receiver = text_receiver;
+    while let Some(snippet) = receiver.recv().await {
+        snippets.push(snippet);
+    }
+    if snippets.is_empty() {
+        return;
+    }
+
+    let text = snippets.join(" ");
+    let current_time = NaiveDateTime::from_timestamp(
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("It's time to check your system clock")
+            .as_secs() as i64,
+        0,
+    );
+    let btfm = btfm_data.lock().await;
+    let rate_adjuster = btfm.config.rate_adjuster;
+    if !text.contains("excuse me")
+        && rate_limit(
+            db::last_play_time(&btfm.db).await,
+            current_time,
+            rate_adjuster,
+            &mut rand::thread_rng(),
+        )
+    {
+        let msg = format!("The bot heard `{:}`, but was rate-limited", &text);
+        log_event_to_channel(
+            btfm.config.log_channel_id.map(ChannelId),
+            &http_client.http,
+            &msg,
+        )
+        .await;
+        return;
+    }
+
+    let clips = db::match_phrase(&btfm.db, &text).await.unwrap();
+    let clip_count = clips.len();
+    let clip = clips.into_iter().choose(&mut rand::thread_rng());
+    if let Some(mut clip) = clip {
+        clip.mark_played(&btfm.db).await.unwrap();
+
+        let phrases = db::phrases_for_clip(&btfm.db, clip.id)
+            .await
+            .unwrap_or_else(|_| vec![])
+            .iter()
+            .map(|p| format!("`{}`", &p.phrase))
+            .collect::<Vec<String>>()
+            .join(", ");
+        let msg = format!(
+                                        "This technological terror heard `{:}`, which matched against {} clips;
+                                        ```{}``` was randomly selected. Phrases that would trigger this clip: {}",
+                                        &text, clip_count, &clip, phrases);
+        log_event_to_channel(
+            btfm.config.log_channel_id.map(ChannelId),
+            &http_client.http,
+            &msg,
+        )
+        .await;
+
+        let source = songbird::ffmpeg(btfm.config.data_directory.join(clip.audio_file))
+            .await
+            .unwrap();
+        let mut unlocked_call = call.lock().await;
+        unlocked_call.enqueue_source(source);
+    } else {
+        let msg = format!("No phrases matched `{}`", &text);
+        log_event_to_channel(
+            btfm.config.log_channel_id.map(ChannelId),
+            &http_client.http,
+            &msg,
+        )
+        .await;
     }
 }
 

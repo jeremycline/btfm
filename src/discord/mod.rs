@@ -1,10 +1,14 @@
 //! Implements the Serenity event handlers for voice and text channels.
-use crate::config::Config;
-use crate::transcribe::{Transcribe, Transcriber};
-use serenity::prelude::*;
-use sqlx::postgres::PgPoolOptions;
 use std::collections::HashMap;
 use std::sync::Arc;
+
+use serenity::prelude::*;
+use sqlx::postgres::PgPoolOptions;
+use tokio::sync::mpsc;
+
+use crate::config::Config;
+use crate::transcribe::Transcriber;
+use crate::Backend;
 
 pub struct BtfmData {
     /// Application configuration
@@ -23,13 +27,13 @@ impl TypeMapKey for BtfmData {
     type Value = Arc<Mutex<BtfmData>>;
 }
 impl BtfmData {
-    pub async fn new(config: Config) -> BtfmData {
+    pub async fn new(config: Config, backend: Backend) -> BtfmData {
         let db = PgPoolOptions::new()
             .max_connections(10)
             .connect(&config.database_url)
             .await
             .expect("Unable to connect to database");
-        let transcriber = Transcriber::new(&config);
+        let transcriber = Transcriber::new(&config, &backend);
         BtfmData {
             config,
             transcriber,
@@ -43,30 +47,16 @@ impl BtfmData {
 
 /// Represents an active user in a voice channel.
 struct User {
-    audio_buffer: Mutex<Vec<i16>>,
+    transcriber: Option<mpsc::Sender<Vec<i16>>>,
     speaking: bool,
 }
 
 impl User {
     pub fn new() -> User {
         User {
-            audio_buffer: Mutex::new(Vec::new()),
+            transcriber: None,
             speaking: false,
         }
-    }
-
-    /// Add new audio to the user's buffer
-    pub async fn push(&mut self, audio: &[i16]) {
-        let mut buf = self.audio_buffer.lock().await;
-        buf.extend(audio);
-    }
-
-    /// Empty and return the user buffer
-    pub async fn reset(&mut self) -> Vec<i16> {
-        let mut voice_data = self.audio_buffer.lock().await;
-        let mut old_voice_data = Vec::new();
-        old_voice_data.append(&mut voice_data);
-        old_voice_data
     }
 }
 

@@ -7,7 +7,9 @@ use crate::Error;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Config {
+    /// The data directory where clips and other application data is stored
     pub data_directory: PathBuf,
+    /// The URL to the PostgreSQL database in the format "postgres://<user>:<pass>@host/database_name"
     pub database_url: String,
     /// The Discord API token.
     pub discord_token: String,
@@ -22,6 +24,9 @@ pub struct Config {
     #[cfg(feature = "deepspeech-recognition")]
     /// DeepSpeech-specific configuration options
     pub deepspeech: DeepSpeech,
+    #[cfg(feature = "deepgram-recognition")]
+    /// Deepgram-specific configuration options
+    pub deepgram: Deepgram,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -32,6 +37,33 @@ pub struct DeepSpeech {
     pub scorer: Option<PathBuf>,
     /// Whether or not to use CUDA for DeepSpeech
     pub gpu: bool,
+}
+
+impl Default for DeepSpeech {
+    fn default() -> Self {
+        DeepSpeech {
+            model: PathBuf::from(r"/var/lib/btfm/deepspeech.pbmm"),
+            scorer: Some(PathBuf::from(r"/var/lib/btfm/deepspeech.scorer")),
+            gpu: false,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Deepgram {
+    /// The Deepgram API key to authenticate with
+    pub api_key: String,
+    /// The Deepgram streaming API endpoint; for example "wss://api.deepgram.com/v1/listen"
+    pub api_endpoint: String,
+}
+
+impl Default for Deepgram {
+    fn default() -> Self {
+        Deepgram {
+            api_key: "your-api-key".to_string(),
+            api_endpoint: "api.deepgram.com".to_string(),
+        }
+    }
 }
 
 impl Default for Config {
@@ -45,11 +77,9 @@ impl Default for Config {
             guild_id: 0,
             rate_adjuster: 120.0,
             #[cfg(feature = "deepspeech-recognition")]
-            deepspeech: DeepSpeech {
-                model: PathBuf::from(r"/var/lib/btfm/deepspeech.pbmm"),
-                scorer: Some(PathBuf::from(r"/var/lib/btfm/deepspeech.scorer")),
-                gpu: false,
-            },
+            deepspeech: DeepSpeech::default(),
+            #[cfg(feature = "deepgram-recognition")]
+            deepgram: Deepgram::default(),
         }
     }
 }

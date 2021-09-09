@@ -59,6 +59,24 @@ pub async fn file_to_wav(audio: &Path, target_sample: i32) -> Vec<i16> {
     data
 }
 
+pub fn wrap_pcm(audio: Vec<i16>) -> Vec<u8> {
+    let spec = hound::WavSpec {
+        bits_per_sample: 16,
+        channels: 2,
+        sample_format: hound::SampleFormat::Int,
+        sample_rate: 48_000,
+    };
+    let mut cursor = Cursor::new(Vec::<u8>::with_capacity(audio.len() * 2));
+    let mut writer = hound::WavWriter::new(&mut cursor, spec).unwrap();
+    let mut i16_writer = writer.get_i16_writer(audio.len() as u32);
+    for sample in audio.iter() {
+        i16_writer.write_sample(*sample);
+    }
+    i16_writer.flush().unwrap();
+    writer.finalize().unwrap();
+    cursor.into_inner()
+}
+
 /// Converts voice data to the target freqency, mono, and apply some ffmpeg filters.
 ///
 /// This expects that the voice packets are all stereo, 16 bits per sample, and at
