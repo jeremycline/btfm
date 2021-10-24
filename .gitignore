@@ -2,3 +2,4 @@
 .gitconfig
 .vscode
 test.sqlite3
+.env

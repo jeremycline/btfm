@@ -4,9 +4,13 @@
 use std::{fs, path::Path};
 
 use chrono::NaiveDateTime;
-use log::{error, info};
 use rand::{distributions::Alphanumeric, prelude::*};
-use sqlx::PgPool;
+use serde::Serialize;
+use sqlx::{types::Uuid, PgConnection, PgPool};
+use tracing::{error, info, instrument};
+use ulid::Ulid;
+
+use crate::uuid_serializer;
 
 /// Representation of an audio clip in the database.
 ///
@@ -14,8 +18,8 @@ use sqlx::PgPool;
 /// the output of semi-accurate speech-to-text.
 #[derive(Debug)]
 pub struct Clip {
-    /// Unique identifier for the clip; the primary key for the table.
-    pub id: i64,
+    /// The unique identifier for the clip and primary key for the table.
+    pub uuid: Uuid,
     /// The time when the clip was added to the database.
     pub created_on: NaiveDateTime,
     /// The last time the clip was played; this is equal to `created_on` when created.
@@ -35,7 +39,7 @@ impl std::fmt::Display for Clip {
         write!(
             f,
             "Clip ID {}\n\tPhrase: {}\n\tDescription: {}\n\tFile: {}\n",
-            self.id, self.phrase, self.description, self.audio_file
+            self.uuid, self.phrase, self.description, self.audio_file
         )
     }
 }
@@ -50,6 +54,7 @@ impl Clip {
     /// # Returns
     ///
     /// A Result with all the clips in the database.
+    #[instrument(skip_all)]
     pub async fn list(pool: &PgPool) -> Result<Vec<Clip>, crate::Error> {
         sqlx::query_as!(
             Clip,
@@ -79,6 +84,7 @@ impl Clip {
     /// # Returns
     ///
     /// The Result is a newly-added Clip, assuming something terrible didn't happen.
+    #[instrument(skip_all)]
     pub async fn insert(
         pool: &PgPool,
         btfm_data_dir: &Path,
@@ -103,12 +109,14 @@ impl Clip {
         let clip_destination = btfm_data_dir.join(&file_name);
         fs::copy(&file, &clip_destination).expect("Unable to copy clip to data directory");
 
+        let uuid = Uuid::from_u128(Ulid::new().0);
         let insert_result = sqlx::query!(
             "
-            INSERT INTO clips (phrase, description, audio_file)
-            VALUES ($1, $2, $3)
-            RETURNING id, created_on, last_played, plays, phrase, description, audio_file
+            INSERT INTO clips (uuid, phrase, description, audio_file)
+            VALUES ($1, $2, $3, $4)
+            RETURNING uuid, created_on, last_played, plays, phrase, description, audio_file
             ",
+            uuid,
             phrase,
             description,
             file_name,
@@ -119,7 +127,7 @@ impl Clip {
             Ok(insert) => {
                 info!("Added clip for {}", &file_name);
                 Ok(Clip {
-                    id: insert.id,
+                    uuid: insert.uuid,
                     created_on: insert.created_on,
                     last_played: insert.last_played,
                     plays: insert.plays,
@@ -144,6 +152,7 @@ impl Clip {
     ///
     /// The number of clips deleted, which should be either 1 or 0, or if things have
     /// gone very wrong, maybe many more. This isn't a very good API.
+    #[instrument(skip_all)]
     pub async fn remove(&self, pool: &PgPool, btfm_data_dir: &Path) -> Result<u64, crate::Error> {
         let clip_path = btfm_data_dir.join(&self.audio_file);
 
@@ -162,9 +171,9 @@ impl Clip {
         sqlx::query!(
             "
             DELETE FROM clips
-            WHERE id = $1
+            WHERE uuid = $1
             ",
-            self.id,
+            self.uuid,
         )
         .execute(pool)
         .await
@@ -184,16 +193,17 @@ impl Clip {
     /// # Returns
     ///
     /// A Result with the number of affected rows when issuing the update.
+    #[instrument(skip_all)]
     pub async fn update(&self, pool: &PgPool) -> Result<u64, crate::Error> {
         sqlx::query!(
             "
             UPDATE clips
             SET description = $1, phrase = $2
-            WHERE id = $3
+            WHERE uuid = $3
             ",
             self.description,
             self.phrase,
-            self.id,
+            self.uuid,
         )
         .execute(pool)
         .await
@@ -217,15 +227,16 @@ impl Clip {
     /// # Returns
     ///
     /// The Clip, or the database error you brought upon yourself.
-    pub async fn get(pool: &PgPool, id: i64) -> Result<Clip, crate::Error> {
+    #[instrument(skip(pool))]
+    pub async fn get(pool: &PgPool, uuid: Uuid) -> Result<Clip, crate::Error> {
         sqlx::query_as!(
             Clip,
             "
             SELECT *
             FROM clips
-            WHERE id = $1;
+            WHERE uuid = $1;
             ",
-            id
+            uuid
         )
         .fetch_one(pool)
         .await
@@ -243,6 +254,7 @@ impl Clip {
     /// # Returns
     ///
     /// The number of rows updated, which should be 1 but maybe won't be, you should totally check that.
+    #[instrument(skip_all)]
     pub async fn mark_played(&mut self, pool: &PgPool) -> Result<u64, crate::Error> {
         self.plays += 1;
         self.last_played = chrono::NaiveDateTime::from_timestamp(
@@ -256,11 +268,11 @@ impl Clip {
             "
             UPDATE clips
             SET plays = $1, last_played = $2
-            WHERE id = $3
+            WHERE uuid = $3
             ",
             self.plays,
             self.last_played,
-            self.id,
+            self.uuid,
         )
         .execute(pool)
         .await
@@ -275,15 +287,16 @@ impl Clip {
 ///
 /// Speech-to-text is run on incoming audio and the result is compared to these phrases.
 /// Phrases are associated with clips via `ClipPhrase` entries in a many-to-many relationship.
-#[derive(Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct Phrase {
-    pub id: i64,
+    #[serde(serialize_with = "uuid_serializer")]
+    pub uuid: Uuid,
     pub phrase: String,
 }
 
 impl std::fmt::Display for Phrase {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Phrase ID {}: \"{}\"", self.id, self.phrase)
+        write!(f, "Phrase ID {}: \"{}\"", self.uuid, self.phrase)
     }
 }
 
@@ -298,6 +311,7 @@ impl Phrase {
     ///
     /// All Phrase objects in the database, or the unlying database error wrapped in an
     /// Error::Database.
+    #[instrument(skip(pool))]
     pub async fn list(pool: &PgPool) -> Result<Vec<Phrase>, crate::Error> {
         sqlx::query_as!(
             Phrase,
@@ -322,15 +336,18 @@ impl Phrase {
     /// # Returns
     ///
     /// The Phrase ID.
+    #[instrument(skip(pool))]
     pub async fn insert(pool: &PgPool, phrase: &str) -> Result<Phrase, crate::Error> {
         let lowercase_phrase = phrase.to_lowercase();
+        let uuid = Uuid::from_u128(Ulid::new().0);
         sqlx::query!(
             "
-            INSERT INTO phrases (phrase)
-            VALUES ($1)
-            RETURNING id, phrase
+            INSERT INTO phrases (phrase, uuid)
+            VALUES ($1, $2)
+            RETURNING uuid, phrase
             ",
-            lowercase_phrase
+            lowercase_phrase,
+            uuid,
         )
         .fetch_one(pool)
         .await
@@ -338,7 +355,7 @@ impl Phrase {
             |e| Err(crate::Error::Database(e)),
             |insert| {
                 Ok(Phrase {
-                    id: insert.id,
+                    uuid,
                     phrase: insert.phrase,
                 })
             },
@@ -354,13 +371,14 @@ impl Phrase {
     /// # Returns
     ///
     /// The number of rows affected by the update.
+    #[instrument(skip(pool))]
     pub async fn remove(&self, pool: &PgPool) -> Result<u64, crate::Error> {
         sqlx::query!(
             "
             DELETE FROM phrases
-            WHERE id = $1
+            WHERE uuid = $1
             ",
-            self.id,
+            self.uuid,
         )
         .execute(pool)
         .await
@@ -381,15 +399,16 @@ impl Phrase {
     /// # Returns
     ///
     /// The number of rows affected by the update.
+    #[instrument(skip(pool))]
     pub async fn update(&self, pool: &PgPool, phrase: &str) -> Result<u64, crate::Error> {
         sqlx::query!(
             "
             UPDATE phrases
             SET phrase = $1
-            WHERE id = $2
+            WHERE uuid = $2
             ",
             phrase,
-            self.id,
+            self.uuid,
         )
         .execute(pool)
         .await
@@ -410,15 +429,16 @@ impl Phrase {
     /// # Returns
     ///
     /// The Phrase.
-    pub async fn get(pool: &PgPool, phrase_id: i64) -> Result<Phrase, crate::Error> {
+    #[instrument(skip(pool))]
+    pub async fn get(pool: &PgPool, phrase_uuid: Uuid) -> Result<Phrase, crate::Error> {
         sqlx::query_as!(
             Phrase,
             "
             SELECT *
             FROM phrases
-            WHERE id = $1
+            WHERE uuid = $1
             ",
-            phrase_id,
+            phrase_uuid,
         )
         .fetch_one(pool)
         .await
@@ -428,8 +448,8 @@ impl Phrase {
 
 #[derive(Debug)]
 pub struct ClipPhrase {
-    pub clip_id: i64,
-    pub phrase_id: i64,
+    pub clip_uuid: Uuid,
+    pub phrase_uuid: Uuid,
 }
 
 impl ClipPhrase {
@@ -447,14 +467,19 @@ impl ClipPhrase {
     ///
     /// If an error occurs, it is returned, otherwise the clip_id and phrase_id provided are the composite
     /// primary key for the association table.
-    pub async fn insert(pool: &PgPool, clip_id: i64, phrase_id: i64) -> Result<(), crate::Error> {
+    #[instrument(skip(pool))]
+    pub async fn insert(
+        pool: &PgPool,
+        clip_uuid: Uuid,
+        phrase_uuid: Uuid,
+    ) -> Result<(), crate::Error> {
         sqlx::query!(
             "
-            INSERT INTO clips_phrases (clip_id, phrase_id)
+            INSERT INTO clips_to_phrases (clip_uuid, phrase_uuid)
             VALUES ($1, $2);
             ",
-            clip_id,
-            phrase_id,
+            clip_uuid,
+            phrase_uuid,
         )
         .execute(pool)
         .await
@@ -474,14 +499,19 @@ impl ClipPhrase {
     /// # Returns
     ///
     /// If an error occurs, it is returned; this includes if the given ids are invalid.
-    pub async fn remove(pool: &PgPool, clip_id: i64, phrase_id: i64) -> Result<(), crate::Error> {
+    #[instrument(skip(pool))]
+    pub async fn remove(
+        pool: &PgPool,
+        clip_uuid: Uuid,
+        phrase_uuid: Uuid,
+    ) -> Result<(), crate::Error> {
         sqlx::query!(
             "
-            DELETE FROM clips_phrases
-            WHERE clip_id = $1 AND phrase_id = $2;
+            DELETE FROM clips_to_phrases
+            WHERE clip_uuid = $1 AND phrase_uuid = $2;
             ",
-            clip_id,
-            phrase_id,
+            clip_uuid,
+            phrase_uuid,
         )
         .execute(pool)
         .await
@@ -501,17 +531,18 @@ impl ClipPhrase {
 /// # Returns
 ///
 /// All Clips associated with the given phrase ID.
-pub async fn clips_for_phrase(pool: &PgPool, phrase_id: i64) -> Result<Vec<Clip>, crate::Error> {
+#[instrument(skip(pool))]
+pub async fn clips_for_phrase(pool: &PgPool, phrase_uuid: Uuid) -> Result<Vec<Clip>, crate::Error> {
     sqlx::query_as!(
         Clip,
         "
         SELECT clips.*
         FROM clips
-        LEFT JOIN clips_phrases
-        ON clips.id = clips_phrases.clip_id
-        WHERE phrase_id = $1
+        LEFT JOIN clips_to_phrases
+        ON clips.uuid = clips_to_phrases.clip_uuid
+        WHERE phrase_uuid = $1
         ",
-        phrase_id
+        phrase_uuid
     )
     .fetch_all(pool)
     .await
@@ -530,19 +561,23 @@ pub async fn clips_for_phrase(pool: &PgPool, phrase_id: i64) -> Result<Vec<Clip>
 /// # Returns
 ///
 /// All Phrases associated with the given clip ID.
-pub async fn phrases_for_clip(pool: &PgPool, clip_id: i64) -> Result<Vec<Phrase>, crate::Error> {
+#[instrument(skip(connection))]
+pub async fn phrases_for_clip(
+    connection: &mut PgConnection,
+    clip_uuid: Uuid,
+) -> Result<Vec<Phrase>, crate::Error> {
     sqlx::query_as!(
         Phrase,
         "
         SELECT phrases.*
         FROM phrases
-        LEFT JOIN clips_phrases
-        ON phrases.id = clips_phrases.phrase_id
-        WHERE clip_id = $1
+        LEFT JOIN clips_to_phrases
+        ON phrases.uuid = clips_to_phrases.phrase_uuid
+        WHERE clip_uuid = $1
         ",
-        clip_id
+        clip_uuid
     )
-    .fetch_all(pool)
+    .fetch_all(&mut *connection)
     .await
     .map_err(crate::Error::Database)
 }
@@ -558,6 +593,7 @@ pub async fn phrases_for_clip(pool: &PgPool, clip_id: i64) -> Result<Vec<Phrase>
 /// The last time a clip was played by the bot. In the event that an error
 /// occurs, the epoch is returned. I did this to make some sort of epoch
 /// failure joke, in the docs, but phrasing it smoothly is difficult.
+#[instrument(skip_all)]
 pub async fn last_play_time(pool: &PgPool) -> NaiveDateTime {
     let clip_query = sqlx::query!(
         "
@@ -587,6 +623,7 @@ pub async fn last_play_time(pool: &PgPool) -> NaiveDateTime {
 /// Clips that match the given phrase, if any. Clips match the phrase
 /// if they contain (according to deepspeech) the given phrase, or if a
 /// user-provided phrase is associated with it.
+#[instrument(skip(pool))]
 pub async fn match_phrase(pool: &PgPool, phrase: &str) -> Result<Vec<Clip>, crate::Error> {
     let clips = Clip::list(pool).await?;
     let phrases = Phrase::list(pool).await?;
@@ -600,9 +637,136 @@ pub async fn match_phrase(pool: &PgPool, phrase: &str) -> Result<Vec<Clip>, crat
     }
     for potential_phrase in phrases {
         if phrase.contains(&potential_phrase.phrase) {
-            matching_clips.append(&mut clips_for_phrase(pool, potential_phrase.id).await?);
+            matching_clips.append(&mut clips_for_phrase(pool, potential_phrase.uuid).await?);
             info!("Matched on '{}'", &potential_phrase);
         }
     }
     Ok(matching_clips)
+}
+
+/// Add multiple phrases to a clip.
+pub async fn add_phrase(
+    connection: &mut PgConnection,
+    phrase: &str,
+    clip_uuid: Uuid,
+) -> Result<Phrase, crate::Error> {
+    let lowercase_phrase = phrase.to_lowercase();
+    let uuid = Uuid::from_u128(Ulid::new().0);
+    let phrase = sqlx::query!(
+        "
+            INSERT INTO phrases (phrase, uuid)
+            VALUES ($1, $2)
+            RETURNING uuid, phrase
+            ",
+        lowercase_phrase,
+        uuid,
+    )
+    .fetch_one(&mut *connection)
+    .await
+    .map(|record| Phrase {
+        uuid: record.uuid,
+        phrase: record.phrase,
+    })?;
+    sqlx::query!(
+        "
+            INSERT INTO clips_to_phrases (clip_uuid, phrase_uuid)
+            VALUES ($1, $2);
+            ",
+        clip_uuid,
+        phrase.uuid,
+    )
+    .execute(&mut *connection)
+    .await?;
+
+    Ok(phrase)
+}
+
+pub mod public {
+    use chrono::NaiveDateTime;
+    use serde::Serialize;
+
+    use super::Phrase;
+
+    #[derive(Clone, Debug, Serialize)]
+    pub struct Clip {
+        /// The unique identifier for the clip and primary key for the table.
+        pub uuid: String,
+        /// The time when the clip was added to the database.
+        pub created_on: NaiveDateTime,
+        /// The last time the clip was played; this is equal to `created_on` when created.
+        pub last_played: NaiveDateTime,
+        /// Number of times the clip has been played.
+        pub plays: i64,
+        /// The output of speech-to-text on the `audio_file`, optionally used as a matching phrase.
+        pub speech_detected: String,
+        /// A description of the clip for human consumption.
+        pub description: String,
+        /// Path to the audio file, relative to the BTFM_DATA_DIR.
+        pub audio_file: String,
+        pub phrases: Vec<Phrase>,
+    }
+}
+
+#[instrument(skip(connection))]
+pub async fn get_clip(connection: &mut PgConnection, uuid: Uuid) -> Result<Clip, crate::Error> {
+    Ok(sqlx::query_as!(
+        Clip,
+        "
+            SELECT *
+            FROM clips
+            WHERE clips.uuid = $1;
+        ",
+        uuid
+    )
+    .fetch_one(&mut *connection)
+    .await?)
+}
+
+#[instrument(skip_all)]
+pub async fn add_clip(
+    connection: &mut PgConnection,
+    data: Vec<u8>,
+    metadata: crate::web::handlers::ClipUpload,
+    filename: &str,
+) -> Result<Clip, crate::Error> {
+    let config = crate::CONFIG.get().expect("Initialize the config");
+    let mut file_prefix = "clips/".to_owned();
+    let random_prefix: String = thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(6)
+        .map(char::from)
+        .collect();
+    file_prefix.push_str(&random_prefix);
+    let prefixed_filename = file_prefix + "-" + filename;
+    let clip_destination = config.data_directory.join(&prefixed_filename);
+    fs::write(&clip_destination, data).expect("woops or something");
+
+    let uuid = Uuid::from_u128(Ulid::new().0);
+    let clip = sqlx::query!(
+        "
+            INSERT INTO clips (uuid, phrase, description, audio_file)
+            VALUES ($1, $2, $3, $4)
+            RETURNING uuid, created_on, last_played, plays, phrase, description, audio_file
+            ",
+        uuid,
+        "",
+        metadata.description,
+        prefixed_filename,
+    )
+    .fetch_one(&mut *connection)
+    .await
+    .map(|record| Clip {
+        uuid: record.uuid,
+        created_on: record.created_on,
+        last_played: record.last_played,
+        plays: record.plays,
+        phrase: record.phrase,
+        description: record.description,
+        audio_file: record.audio_file,
+    })?;
+
+    for phrase in metadata.phrases.unwrap_or_else(Vec::new) {
+        add_phrase(&mut *connection, &phrase, clip.uuid).await?;
+    }
+    Ok(clip)
 }

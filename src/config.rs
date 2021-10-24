@@ -1,12 +1,18 @@
 /// Defines the configuration file format for BTFM.
-use std::{fmt::Display, path::PathBuf};
+use std::{fmt::Display, net::SocketAddr, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
+use url::Url;
 
 use crate::Error;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Config {
+    /// The URL of an HTTP API used to manage the bot.
+    ///
+    /// The API does not offer authentication or TLS; these must be provided by a proxy like NGINX
+    /// with `auth_request`.
+    pub api_url: Option<SocketAddr>,
     /// The data directory where clips and other application data is stored
     pub data_directory: PathBuf,
     /// The URL to the PostgreSQL database in the format "postgres://<user>:<pass>@host/database_name"
@@ -27,7 +33,7 @@ pub struct Config {
     pub deepgram: Deepgram,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DeepSpeech {
     /// Path to the DeepSpeech model (pbmm) file
     pub model: PathBuf,
@@ -47,19 +53,19 @@ impl Default for DeepSpeech {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Deepgram {
     /// The Deepgram API key to authenticate with
     pub api_key: String,
     /// The Deepgram streaming API endpoint; for example "wss://api.deepgram.com/v1/listen"
-    pub api_endpoint: String,
+    pub websocket_url: Url,
 }
 
 impl Default for Deepgram {
     fn default() -> Self {
         Deepgram {
             api_key: "your-api-key".to_string(),
-            api_endpoint: "api.deepgram.com".to_string(),
+            websocket_url: Url::parse("wss://api.deepgram.com/v1/listen").unwrap(),
         }
     }
 }
@@ -67,6 +73,7 @@ impl Default for Deepgram {
 impl Default for Config {
     fn default() -> Self {
         Config {
+            api_url: None,
             data_directory: PathBuf::from(r"/var/lib/btfm/"),
             database_url: "postgres:///btfm".to_string(),
             discord_token: "Go get a Discord API token".to_string(),

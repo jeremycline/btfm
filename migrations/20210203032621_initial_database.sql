@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS "clips" (
-    "id" BIGSERIAL PRIMARY KEY,
+    "uuid" UUID PRIMARY KEY,
     "created_on" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "last_played" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "plays" BIGINT NOT NULL DEFAULT 0,
@@ -9,15 +9,14 @@ CREATE TABLE IF NOT EXISTS "clips" (
 );
 
 CREATE TABLE IF NOT EXISTS "phrases" (
-    "id" BIGSERIAL PRIMARY KEY,
+    "uuid" UUID PRIMARY KEY,
     "phrase" TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "clips_phrases" (
-    "id" BIGSERIAL PRIMARY KEY,
-    "clip_id" BIGINT NOT NULL,
-    "phrase_id" BIGINT NOT NULL,
-    UNIQUE (clip_id, phrase_id),
-    FOREIGN KEY (clip_id) REFERENCES clips(id) ON DELETE CASCADE ON UPDATE NO ACTION,
-    FOREIGN KEY (phrase_id) REFERENCES phrases(id) ON DELETE CASCADE ON UPDATE NO ACTION
+CREATE TABLE IF NOT EXISTS "clips_to_phrases" (
+    "clip_uuid" UUID NOT NULL,
+    "phrase_uuid" UUID NOT NULL,
+    PRIMARY KEY(clip_uuid, phrase_uuid),
+    FOREIGN KEY (clip_uuid) REFERENCES clips(uuid) ON DELETE CASCADE ON UPDATE NO ACTION,
+    FOREIGN KEY (phrase_uuid) REFERENCES phrases(uuid) ON DELETE CASCADE ON UPDATE NO ACTION
 );

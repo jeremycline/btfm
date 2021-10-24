@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use log::{debug, info};
+use tracing::{debug, info};
 
 use serenity::{
     async_trait,
@@ -50,19 +50,12 @@ impl EventHandler for Handler {
             .await
             .expect("Songbird client missing")
             .clone();
-        let btfm_data_lock = context
-            .data
-            .read()
-            .await
-            .get::<BtfmData>()
-            .cloned()
-            .expect("Expected BtfmData in TypeMap");
-        let mut btfm_data = btfm_data_lock.lock().await;
+        let config = crate::CONFIG.get().unwrap();
 
-        if let Some(locked_handler) = manager.get(btfm_data.config.guild_id) {
+        if let Some(locked_handler) = manager.get(config.guild_id) {
             // This event pertains to the channel we care about.
             let mut handler = locked_handler.lock().await;
-            if Some(ChannelId(btfm_data.config.channel_id)) == new.channel_id {
+            if Some(ChannelId(config.channel_id)) == new.channel_id {
                 match old {
                     Some(old_state) => {
                         // Order matters here, the UI mutes users who deafen
@@ -70,49 +63,58 @@ impl EventHandler for Handler {
                         // with muting
                         if old_state.self_deaf != new.self_deaf && new.self_deaf {
                             debug!("Someone deafened themselves in a channel we care about");
-                            hello_there(&btfm_data, "deaf")
+                            hello_there("deaf")
                                 .await
                                 .map(|s| Some(handler.play_source(s)));
                         } else if old_state.self_deaf != new.self_deaf && !new.self_deaf {
                             debug!("Someone un-deafened themselves in a channel we care about");
-                            hello_there(&btfm_data, "undeaf")
+                            hello_there("undeaf")
                                 .await
                                 .map(|s| Some(handler.play_source(s)));
                         } else if old_state.self_mute != new.self_mute && new.self_mute {
                             debug!("Someone muted in the channel we care about");
-                            hello_there(&btfm_data, "mute")
+                            hello_there("mute")
                                 .await
                                 .map(|s| Some(handler.play_source(s)));
                         } else if old_state.self_mute != new.self_mute && !new.self_mute {
                             debug!("Someone un-muted in the channel we care about");
-                            hello_there(&btfm_data, "unmute")
+                            hello_there("unmute")
                                 .await
                                 .map(|s| Some(handler.play_source(s)));
                         }
                     }
                     None => {
                         debug!("User just joined our channel");
-                        hello_there(&btfm_data, "hello")
+                        hello_there("hello")
                             .await
                             .map(|s| Some(handler.play_source(s)));
-                        let join_count = btfm_data
-                            .user_history
-                            .entry(*new.user_id.as_u64())
-                            .or_insert(0);
-                        *join_count += 1;
-                        if *join_count > 1 {
+                        let join_count = increment_join_count(context, *new.user_id.as_u64()).await;
+                        if join_count > 1 {
                             info!("Someone just rejoined; let them know how we feel");
                             let rng: f64 = rand::random();
-                            if 1_f64 - (*join_count as f64 * 0.1).exp() > rng {
-                                hello_there(&btfm_data, "rejoin")
+                            if 1_f64 - (join_count as f64 * 0.1).exp() > rng {
+                                hello_there("rejoin")
                                     .await
                                     .map(|s| Some(handler.play_source(s)));
                             }
                         }
                     }
                 }
-                info!("user_history={:?}", &btfm_data.user_history);
             }
         }
     }
+}
+
+async fn increment_join_count(context: Context, user_id: u64) -> u32 {
+    let btfm_data_lock = context
+        .data
+        .read()
+        .await
+        .get::<BtfmData>()
+        .cloned()
+        .expect("Expected BtfmData in TypeMap");
+    let mut btfm_data = btfm_data_lock.lock().await;
+    let join_count = btfm_data.user_history.entry(user_id).or_insert(0);
+    *join_count += 1;
+    *join_count
 }

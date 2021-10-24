@@ -1,8 +1,4 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-#[macro_use]
-extern crate log;
-extern crate stderrlog;
-
 use std::fs;
 use std::sync::Arc;
 
@@ -10,6 +6,7 @@ use serenity::{client::Client, framework::StandardFramework, prelude::*};
 use songbird::{driver::DecodeMode, SerenityInit, Songbird};
 use sqlx::postgres::PgPoolOptions;
 use structopt::StructOpt;
+use tracing::{debug, error};
 
 use btfm::discord::{
     text::{Handler, HttpClient},
@@ -21,30 +18,38 @@ static MIGRATIONS: sqlx::migrate::Migrator = sqlx::migrate!("./migrations/");
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
-    let opts = cli::Btfm::from_args();
+    tracing_subscriber::fmt::init();
 
-    let db_pool = PgPoolOptions::new()
-        .max_connections(1)
+    let opts = cli::Btfm::from_args();
+    btfm::CONFIG
+        .set(opts.config.clone())
+        .expect("Failed to set config global");
+
+    debug!("Starting database connection to perform the database migration");
+    let db_pool = match PgPoolOptions::new()
+        .max_connections(32)
         .connect(&opts.config.database_url)
         .await
-        .expect("Unable to connect to database");
-    match MIGRATIONS.run(&db_pool).await {
-        Ok(_) => {}
+    {
+        Ok(pool) => match MIGRATIONS.run(&pool).await {
+            Ok(_) => pool,
+            Err(e) => {
+                error!("Failed to migrate the database: {:?}", e);
+                return;
+            }
+        },
         Err(e) => {
-            println!("Failed to migrate database: {}", e);
+            error!("Unable to connect to the database: {}", e);
             return;
         }
-    }
+    };
 
     match opts.command {
-        cli::Command::Run { verbose, backend } => {
-            stderrlog::new()
-                .module(module_path!())
-                .verbosity(verbose)
-                .timestamp(stderrlog::Timestamp::Second)
-                .init()
-                .unwrap();
-            drop(db_pool);
+        cli::Command::Run { backend } => {
+            let app = btfm::web::create(db_pool);
+            let server =
+                axum::Server::bind(&"0.0.0.0:4567".parse().unwrap()).serve(app.into_make_service());
+            let server_handle = tokio::spawn(server);
 
             let framework = StandardFramework::new();
             // Configure Songbird to decode audio to signed 16 bit-per-same stereo PCM.
@@ -65,10 +70,15 @@ async fn main() {
                     BtfmData::new(opts.config, backend).await,
                 )));
             }
-            let _ = client
-                .start()
-                .await
-                .map_err(|why| error!("Client ended: {:?}", why));
+            let discord_client_handle = tokio::spawn(async move {
+                client
+                    .start()
+                    .await
+                    .map_err(|e| error!("Discord client died: {:?}", e))
+            });
+
+            // TODO: Quit if either fails or make the web server optional, I dunno
+            let (_first, _second) = tokio::join!(discord_client_handle, server_handle);
         }
 
         cli::Command::Clip(clip_subcommand) => match clip_subcommand {
@@ -77,10 +87,12 @@ async fn main() {
                     .expect("Unable to create clips directory");
 
                 let transcriber = transcribe::Transcriber::new(&opts.config, &Backend::default());
-                let phrase = transcriber
-                    .plain_text(transcode::file_to_wav(&file, 16_000).await)
-                    .await
-                    .unwrap();
+                let audio = transcode::file_to_wav(&file, 16_000).await;
+                let (audio_sender, audio_receiver) = tokio::sync::mpsc::channel(2048);
+                let mut phrase_receiver = transcriber.stream(audio_receiver).await;
+                audio_sender.send(audio).await.unwrap();
+                drop(audio_sender);
+                let phrase = phrase_receiver.blocking_recv().unwrap();
 
                 db::Clip::insert(
                     &db_pool,
@@ -164,7 +176,7 @@ async fn main() {
         cli::Command::Trigger { clip_id, phrase } => {
             match db::Phrase::insert(&db_pool, &phrase).await {
                 Ok(phrase) => {
-                    db::ClipPhrase::insert(&db_pool, clip_id, phrase.id)
+                    db::ClipPhrase::insert(&db_pool, clip_id, phrase.uuid)
                         .await
                         .unwrap();
                 }

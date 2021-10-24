@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
 
 use deepspeech::Model;
-use log::info;
 use tokio::{runtime::Handle, sync::mpsc};
+use tracing::{info, Instrument};
 
 use super::TranscriptionRequest;
 use crate::transcode::discord_to_wav;
@@ -28,50 +28,40 @@ impl TranscriberWorker {
 
     pub fn transcribe(&mut self, request: TranscriptionRequest) {
         match request {
-            TranscriptionRequest::PlainText { audio, respond_to } => {
-                let model_path = self.model_path.clone();
-                let scorer_path = self.scorer_path.clone();
-                let rt_handle = Handle::current();
-
-                tokio::task::spawn_blocking(move || {
-                    if respond_to
-                        .send(blocking_transcribe(
-                            &model_path,
-                            scorer_path.as_ref(),
-                            rt_handle,
-                            audio,
-                        ))
-                        .is_err()
-                    {
-                        info!("The transcription requester is gone");
-                    }
-                });
-            }
             TranscriptionRequest::Stream {
                 mut audio,
                 respond_to,
+                span,
             } => {
                 // Deepspeech supports streaming, but we're going to fake it here to get started with.
                 let model_path = self.model_path.clone();
                 let scorer_path = self.scorer_path.clone();
 
-                tokio::task::spawn(async move {
-                    let mut buffer = Vec::new();
-                    while let Some(mut snippet) = audio.recv().await {
-                        buffer.append(&mut snippet)
-                    }
-                    let rt_handle = Handle::current();
+                tokio::task::spawn(
+                    async move {
+                        let mut buffer = Vec::new();
+                        while let Some(mut snippet) = audio.recv().await {
+                            buffer.append(&mut snippet)
+                        }
+                        let rt_handle = Handle::current();
 
-                    let result = tokio::task::spawn_blocking(move || {
-                        blocking_transcribe(&model_path, scorer_path.as_ref(), rt_handle, buffer)
-                    })
-                    .await;
-                    if let Ok(text) = result {
-                        if respond_to.send(text).await.is_err() {
-                            info!("The transcription requester is gone");
+                        let result = tokio::task::spawn_blocking(move || {
+                            blocking_transcribe(
+                                &model_path,
+                                scorer_path.as_ref(),
+                                rt_handle,
+                                buffer,
+                            )
+                        })
+                        .await;
+                        if let Ok(text) = result {
+                            if respond_to.send(text).await.is_err() {
+                                info!("The transcription requester is gone");
+                            }
                         }
                     }
-                });
+                    .instrument(span),
+                );
             }
         }
     }

@@ -7,7 +7,6 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chrono::NaiveDateTime;
-use log::{debug, error, info, trace, warn};
 use rand::prelude::*;
 use serenity::CacheAndHttp;
 use serenity::{
@@ -19,6 +18,8 @@ use songbird::{
     Call, CoreEvent, Event, EventContext, EventHandler as VoiceEventHandler,
 };
 use tokio::sync::mpsc;
+use tracing::{debug, error, info, trace, warn, Instrument};
+use ulid::Ulid;
 
 use super::text::HttpClient;
 use super::{BtfmData, User};
@@ -103,10 +104,13 @@ pub async fn manage_voice_channel(context: &Context) {
 }
 
 /// Return an AudioSource to greet a new user (or the channel at large).
-pub async fn hello_there(btfm_data: &BtfmData, event_name: &str) -> Option<Input> {
-    let hello = btfm_data.config.data_directory.join(event_name);
-    if hello.exists() {
-        Some(songbird::ffmpeg(hello).await.unwrap())
+pub async fn hello_there(event_name: &str) -> Option<Input> {
+    let hello = crate::CONFIG
+        .get()
+        .map(|config| config.data_directory.join(event_name))
+        .and_then(|f| if f.exists() { Some(f) } else { None });
+    if let Some(path) = hello {
+        Some(songbird::ffmpeg(path).await.unwrap())
     } else {
         None
     }
@@ -203,7 +207,7 @@ impl VoiceEventHandler for Receiver {
 
                     if let Some(user) = btfm_data.users.get_mut(&ssrc) {
                         // This closes the audio sending channel which causes the worker to hang up the text
-                        // sending channel channel, which causes the handle_text() function to break from its
+                        // sending channel, which causes the handle_text() function to break from its
                         // receiving loop and look for a clip match.
                         user.transcriber.take();
                     }
@@ -237,7 +241,9 @@ impl VoiceEventHandler for Receiver {
                 if let Some(audio) = audio {
                     if user.transcriber.is_none() {
                         let (audio_sender, audio_receiver) = mpsc::channel(2048);
-                        let text_receiver = transcriber.stream(audio_receiver).await;
+                        let span = tracing::info_span!("stream", id = %Ulid::new());
+                        let text_receiver =
+                            transcriber.stream(audio_receiver).instrument(span).await;
                         let locked_call = self.locked_call.clone();
                         tokio::task::spawn(handle_text(
                             locked_btfm_data.clone(),
@@ -345,8 +351,8 @@ async fn handle_text(
     let clip = clips.into_iter().choose(&mut rand::thread_rng());
     if let Some(mut clip) = clip {
         clip.mark_played(&btfm.db).await.unwrap();
-
-        let phrases = db::phrases_for_clip(&btfm.db, clip.id)
+        let mut conn = btfm.db.acquire().await.unwrap();
+        let phrases = db::phrases_for_clip(&mut conn, clip.uuid)
             .await
             .unwrap_or_else(|_| vec![])
             .iter()

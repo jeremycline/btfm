@@ -1,13 +1,30 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use sqlx::types::Uuid;
 use std::path::PathBuf;
 use structopt::StructOpt;
 
 use crate::config::{load_config, Config};
 use crate::Backend;
 
+/// CLI to start the btfm service, manage audio clips, and more.
+///
+/// # Logging
+///
+/// When running the service, log levels and filtering are controlled by tracing_subscriber's
+/// EnvFilter using the RUST_LOG environment variable. Refer to the documentation at
+/// https://docs.rs/tracing-subscriber/0.3.1/tracing_subscriber/filter/struct.EnvFilter.html
+/// for complete details.
+///
+/// The most basic form is one of "trace", "debug", "info", "warn", or "error". For example:
+///
+/// RUST_LOG=warn
+///
+/// # Configuration
+///
+/// The configuration file is expected to be in TOML format.
 #[derive(StructOpt, Debug)]
-#[structopt(name = "btfm", about = "Start the btfm service, add audio clips, etc.")]
+#[structopt(name = "btfm")]
 pub struct Btfm {
     /// Path to the BTFM configuration file; see btfm.toml.example for details
     #[structopt(parse(try_from_str = load_config), env = "BTFM_CONFIG")]
@@ -28,10 +45,7 @@ pub enum Command {
     },
     /// Run the bot service
     Run {
-        /// Log verbosity (-v for warn, -vv for info, etc)
-        #[structopt(short, long, parse(from_occurrences))]
-        verbose: usize,
-        #[structopt(short, long, possible_values = &Backend::variants(), case_insensitive = true, default_value)]
+        #[structopt(short, long, possible_values = &Backend::variants(), case_insensitive = true, default_value, env = "BTFM_BACKEND")]
         backend: Backend,
     },
 
@@ -40,7 +54,7 @@ pub enum Command {
     Trigger {
         /// The clip ID (from "clip list")
         #[structopt()]
-        clip_id: i64,
+        clip_id: Uuid,
         /// The phrase that triggers the audio clip
         #[structopt()]
         phrase: String,
@@ -67,7 +81,7 @@ pub enum Clip {
     Edit {
         /// The clip ID (from "clip list")
         #[structopt()]
-        clip_id: i64,
+        clip_id: Uuid,
         /// A short description of the audio clip
         #[structopt(short, long)]
         description: Option<String>,
@@ -78,7 +92,7 @@ pub enum Clip {
     Remove {
         /// The clip ID (from "clip list")
         #[structopt()]
-        clip_id: i64,
+        clip_id: Uuid,
     },
 }
 
@@ -88,19 +102,19 @@ pub enum Phrase {
     Trigger {
         /// The clip ID (from "clip list")
         #[structopt()]
-        clip_id: i64,
+        clip_id: Uuid,
         /// The phrase ID (from "phrase list")
         #[structopt()]
-        phrase_id: i64,
+        phrase_id: Uuid,
     },
     /// Remove a phrase as a trigger for a clip
     Untrigger {
         /// The clip ID (from "clip list")
         #[structopt()]
-        clip_id: i64,
+        clip_id: Uuid,
         /// The phrase ID (from "phrase list")
         #[structopt()]
-        phrase_id: i64,
+        phrase_id: Uuid,
     },
     /// Add a new phrase to the database
     Add {
@@ -112,7 +126,7 @@ pub enum Phrase {
     Edit {
         /// The phrase ID (from "phrase list")
         #[structopt()]
-        phrase_id: i64,
+        phrase_id: Uuid,
         /// The new phrase
         #[structopt(short, long)]
         phrase: String,
@@ -123,6 +137,6 @@ pub enum Phrase {
     Remove {
         /// The phrase ID (from "phrase list")
         #[structopt()]
-        phrase_id: i64,
+        phrase_id: Uuid,
     },
 }

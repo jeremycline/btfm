@@ -5,12 +5,13 @@ use std::path::Path;
 use std::process::Stdio;
 
 use byteorder::{ByteOrder, LittleEndian};
-use log::{error, info};
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
+use tracing::{error, info, instrument};
 
 /// Prepare a file for DeepSpeech
+#[instrument]
 pub async fn file_to_wav(audio: &Path, target_sample: i32) -> Vec<i16> {
     let mut ffmpeg = Command::new("ffmpeg")
         .args(&[
@@ -59,6 +60,7 @@ pub async fn file_to_wav(audio: &Path, target_sample: i32) -> Vec<i16> {
     data
 }
 
+#[instrument]
 pub fn wrap_pcm(audio: Vec<i16>) -> Vec<u8> {
     let spec = hound::WavSpec {
         bits_per_sample: 16,
@@ -83,6 +85,7 @@ pub fn wrap_pcm(audio: Vec<i16>) -> Vec<u8> {
 /// sampled at 48kHz. This is what Discord has documented it uses.
 ///
 /// Returns: Audio prepped for deepspeech.
+#[instrument]
 pub async fn discord_to_wav(voice_data: Vec<i16>, target_sample: u32) -> Vec<i16> {
     let data = Vec::<u8>::with_capacity(voice_data.len() * 2);
     let mut cursor = Cursor::new(data);
