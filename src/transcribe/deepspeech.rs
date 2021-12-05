@@ -45,7 +45,9 @@ impl TranscriberWorker {
                         }
                         let rt_handle = Handle::current();
 
+                        let span = tracing::Span::current();
                         let result = tokio::task::spawn_blocking(move || {
+                            let _entered = span.enter();
                             blocking_transcribe(
                                 &model_path,
                                 scorer_path.as_ref(),
