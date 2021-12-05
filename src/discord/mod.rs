@@ -27,7 +27,11 @@ impl TypeMapKey for BtfmData {
     type Value = Arc<Mutex<BtfmData>>;
 }
 impl BtfmData {
-    pub async fn new(config: Config, backend: Backend) -> BtfmData {
+    pub async fn new(backend: Backend) -> BtfmData {
+        let config = crate::CONFIG
+            .get()
+            .expect("CONFIG needs to be initialized before starting the transcriber")
+            .to_owned();
         let db = PgPoolOptions::new()
             .max_connections(10)
             .connect(&config.database_url)

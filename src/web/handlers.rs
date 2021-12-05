@@ -2,65 +2,14 @@ use axum::{
     extract::{ContentLengthLimit, Extension, Multipart, Path},
     Json,
 };
-use chrono::NaiveDateTime;
 use hyper::StatusCode;
-use serde::{Deserialize, Serialize};
 use sqlx::{postgres::PgConnectionInfo, types::Uuid, PgPool};
 use tracing::{error, info, instrument};
 use ulid::Ulid;
 
 use crate::db;
 
-use super::serialization;
-
-#[derive(Serialize)]
-pub struct Status {
-    db_version: Option<u32>,
-    db_connections: u32,
-}
-
-#[derive(Debug, Serialize)]
-pub struct Phrase {
-    /// The unique identifier for the phrase
-    pub uuid: String,
-    /// The phrase that triggers any clips associated with this phrase.
-    pub phrase: String,
-}
-
-#[derive(Debug, Serialize)]
-pub struct Clip {
-    /// The unique identifier for the clip.
-    pub uuid: String,
-    /// The time when the clip was added to the database.
-    pub created_on: NaiveDateTime,
-    /// The last time the clip was played; this is equal to `created_on` when created.
-    pub last_played: NaiveDateTime,
-    /// Number of times the clip has been played.
-    pub plays: u64,
-    /// The output of speech-to-text on the `audio_file`.
-    pub clip_text: String,
-    /// A description of the clip for human consumption.
-    pub description: String,
-    /// The phrases associated with the clip
-    pub phrases: Vec<db::Phrase>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct Clips {
-    items: u64,
-    clips: Vec<Clip>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct PhraseUpload {
-    pub phrase: String,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct ClipUpload {
-    pub description: String,
-    pub phrases: Option<Vec<String>>,
-}
+use super::serialization::{Clip, ClipUpload, Clips, CreatePhrase, Phrase, Phrases, Status};
 
 /// Reports on the health of the web server.
 #[instrument(skip(db_pool))]
@@ -84,16 +33,9 @@ pub async fn clips(Extension(db_pool): Extension<PgPool>) -> Result<Json<Clips>,
     let mut clips = vec![];
     for clip in db::Clip::list(&db_pool).await? {
         let mut conn = db_pool.acquire().await?;
-        let phrases = db::phrases_for_clip(&mut conn, clip.uuid).await?;
-        clips.push(Clip {
-            uuid: clip.uuid.to_string(),
-            created_on: clip.created_on,
-            last_played: clip.last_played,
-            plays: clip.plays as u64,
-            clip_text: clip.phrase,
-            description: clip.description,
-            phrases,
-        })
+        let mut clip: Clip = clip.into();
+        clip.load_phrases(&mut conn).await?;
+        clips.push(clip);
     }
     Ok(Clips {
         items: clips.len() as u64,
@@ -107,19 +49,11 @@ pub async fn clips(Extension(db_pool): Extension<PgPool>) -> Result<Json<Clips>,
 pub async fn clip(
     Extension(db_pool): Extension<PgPool>,
     Path(ulid): Path<Ulid>,
-) -> Result<Json<serialization::Clip>, crate::Error> {
+) -> Result<Json<Clip>, crate::Error> {
     let uuid = Uuid::from_u128(ulid.0);
     let mut conn = db_pool.begin().await?;
-    let mut clip: serialization::Clip = db::get_clip(&mut conn, uuid)
-        .await
-        .map(|clip| clip.into())?;
-    clip.phrases = Some(
-        db::phrases_for_clip(&mut conn, uuid)
-            .await?
-            .into_iter()
-            .map(|p| p.into())
-            .collect::<Vec<serialization::Phrase>>(),
-    );
+    let mut clip: Clip = db::get_clip(&mut conn, uuid).await?.into();
+    clip.load_phrases(&mut conn).await?;
     Ok(clip.into())
 }
 
@@ -132,7 +66,7 @@ pub async fn clip(
 pub async fn create_clip(
     Extension(db_pool): Extension<PgPool>,
     ContentLengthLimit(mut form): ContentLengthLimit<Multipart, { 50 * 1024 * 1024 }>,
-) -> Result<Json<serialization::Clip>, crate::Error> {
+) -> Result<Json<Clip>, crate::Error> {
     let mut clip_metadata = None;
     let mut filename = None;
     let mut clip_data = None;
@@ -155,17 +89,10 @@ pub async fn create_clip(
     match (clip_metadata, clip_data, filename) {
         (Some(metadata), Some(data), Some(filename)) => {
             let mut transaction = db_pool.begin().await?;
-            let mut clip: serialization::Clip =
-                db::add_clip(&mut transaction, data.to_vec(), metadata, &filename)
-                    .await?
-                    .into();
-            clip.phrases = Some(
-                db::phrases_for_clip(&mut transaction, Uuid::from_u128(clip.ulid.0))
-                    .await?
-                    .into_iter()
-                    .map(|p| p.into())
-                    .collect::<Vec<serialization::Phrase>>(),
-            );
+            let mut clip: Clip = db::add_clip(&mut transaction, data.to_vec(), metadata, &filename)
+                .await?
+                .into();
+            clip.load_phrases(&mut transaction).await?;
             transaction.commit().await?;
             Ok(clip.into())
         }
@@ -173,23 +100,35 @@ pub async fn create_clip(
     }
 }
 
-#[derive(Serialize)]
-pub struct Phrases {
-    items: u64,
-    phrases: Vec<serialization::Phrase>,
+/// Show the phrase associated with a given Ulid.
+#[instrument(skip(db_pool))]
+pub async fn phrase(
+    Extension(db_pool): Extension<PgPool>,
+    Path(ulid): Path<Ulid>,
+) -> Result<Json<Phrase>, crate::Error> {
+    let uuid = Uuid::from_u128(ulid.0);
+    let mut conn = db_pool.begin().await?;
+    let phrase: Phrase = db::get_phrase(&mut conn, uuid).await?.into();
+    Ok(phrase.into())
 }
 
-/// List clips known to BTFM
+/// List phrases known to BTFM
 #[instrument(skip(db_pool))]
 pub async fn phrases(Extension(db_pool): Extension<PgPool>) -> Result<Json<Phrases>, crate::Error> {
-    let phrases = db::Phrase::list(&db_pool)
+    let phrases: Phrases = db::Phrase::list(&db_pool).await?.into();
+    Ok(phrases.into())
+}
+
+/// Create a new trigger phrase for a clip.
+#[instrument(skip(db_pool))]
+pub async fn create_phrase(
+    Extension(db_pool): Extension<PgPool>,
+    Json(phrase_upload): Json<CreatePhrase>,
+) -> Result<Json<Phrase>, crate::Error> {
+    let clip_uuid = Uuid::from_u128(phrase_upload.clip.0);
+    let mut conn = db_pool.begin().await?;
+    let phrase: Phrase = db::add_phrase(&mut conn, &phrase_upload.phrase, clip_uuid)
         .await?
-        .into_iter()
-        .map(|p| p.into())
-        .collect::<Vec<serialization::Phrase>>();
-    Ok(Phrases {
-        items: phrases.len() as u64,
-        phrases,
-    }
-    .into())
+        .into();
+    Ok(phrase.into())
 }

@@ -46,11 +46,6 @@ async fn main() {
 
     match opts.command {
         cli::Command::Run { backend } => {
-            let app = btfm::web::create(db_pool);
-            let server =
-                axum::Server::bind(&"0.0.0.0:4567".parse().unwrap()).serve(app.into_make_service());
-            let server_handle = tokio::spawn(server);
-
             let framework = StandardFramework::new();
             // Configure Songbird to decode audio to signed 16 bit-per-same stereo PCM.
             let songbird = Songbird::serenity();
@@ -66,9 +61,7 @@ async fn main() {
                 let mut data = client.data.write().await;
 
                 data.insert::<HttpClient>(Arc::clone(&client.cache_and_http));
-                data.insert::<BtfmData>(Arc::new(Mutex::new(
-                    BtfmData::new(opts.config, backend).await,
-                )));
+                data.insert::<BtfmData>(Arc::new(Mutex::new(BtfmData::new(backend).await)));
             }
             let discord_client_handle = tokio::spawn(async move {
                 client
@@ -77,8 +70,14 @@ async fn main() {
                     .map_err(|e| error!("Discord client died: {:?}", e))
             });
 
-            // TODO: Quit if either fails or make the web server optional, I dunno
-            let (_first, _second) = tokio::join!(discord_client_handle, server_handle);
+            if let Some(socket_addr) = &opts.config.api_url {
+                let app = btfm::web::create(db_pool);
+                let server = axum::Server::bind(socket_addr).serve(app.into_make_service());
+                let server_handle = tokio::spawn(server);
+                let (_first, _second) = tokio::join!(discord_client_handle, server_handle);
+            } else {
+                discord_client_handle.await.unwrap().unwrap();
+            }
         }
 
         cli::Command::Clip(clip_subcommand) => match clip_subcommand {

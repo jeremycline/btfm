@@ -1,21 +1,14 @@
 /// Defines public-facing structures used in the web API
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
+use sqlx::PgConnection;
 
-/// A phrase used to trigger one or more clips
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Phrase {
-    pub ulid: ulid::Ulid,
-    pub phrase: String,
-}
+use crate::db;
 
-impl From<crate::db::Phrase> for Phrase {
-    fn from(phrase: crate::db::Phrase) -> Self {
-        Self {
-            ulid: phrase.uuid.into(),
-            phrase: phrase.phrase,
-        }
-    }
+#[derive(Serialize)]
+pub struct Status {
+    pub db_version: Option<u32>,
+    pub db_connections: u32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -34,7 +27,8 @@ pub struct Clip {
     pub description: String,
     /// Path to the audio file, relative to the BTFM_DATA_DIR.
     pub audio_file: String,
-    pub phrases: Option<Vec<Phrase>>,
+    /// Phrases associated with the clip.
+    pub phrases: Option<Phrases>,
 }
 
 impl From<crate::db::Clip> for Clip {
@@ -50,4 +44,71 @@ impl From<crate::db::Clip> for Clip {
             phrases: None,
         }
     }
+}
+
+impl Clip {
+    pub async fn load_phrases(
+        &mut self,
+        connection: &mut PgConnection,
+    ) -> Result<(), crate::Error> {
+        self.phrases = Some(
+            db::phrases_for_clip(&mut *connection, self.ulid.into())
+                .await?
+                .into(),
+        );
+        Ok(())
+    }
+}
+#[derive(Debug, Serialize)]
+pub struct Clips {
+    pub items: u64,
+    pub clips: Vec<Clip>,
+}
+
+/// A phrase used to trigger one or more clips
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Phrase {
+    pub ulid: ulid::Ulid,
+    pub phrase: String,
+}
+
+impl From<db::Phrase> for Phrase {
+    fn from(phrase: db::Phrase) -> Self {
+        Self {
+            ulid: phrase.uuid.into(),
+            phrase: phrase.phrase,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct CreatePhrase {
+    /// The phrase.
+    pub phrase: String,
+    /// The clip to associate the phrase to.
+    pub clip: ulid::Ulid,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Phrases {
+    pub items: u64,
+    pub phrases: Vec<Phrase>,
+}
+
+impl From<Vec<db::Phrase>> for Phrases {
+    fn from(phrases: Vec<db::Phrase>) -> Self {
+        Self {
+            items: phrases.len() as u64,
+            phrases: phrases
+                .into_iter()
+                .map(|p| p.into())
+                .collect::<Vec<Phrase>>(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ClipUpload {
+    pub description: String,
+    pub phrases: Option<Vec<String>>,
 }

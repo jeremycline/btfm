@@ -644,7 +644,27 @@ pub async fn match_phrase(pool: &PgPool, phrase: &str) -> Result<Vec<Clip>, crat
     Ok(matching_clips)
 }
 
-/// Add multiple phrases to a clip.
+/// Get a single phrase by Uuid.
+#[instrument(skip(connection))]
+pub async fn get_phrase(
+    connection: &mut PgConnection,
+    phrase_uuid: Uuid,
+) -> Result<Phrase, crate::Error> {
+    Ok(sqlx::query_as!(
+        Phrase,
+        "
+            SELECT *
+            FROM phrases
+            WHERE uuid = $1
+            ",
+        phrase_uuid,
+    )
+    .fetch_one(&mut *connection)
+    .await?)
+}
+
+/// Add a phrase to a clip.
+#[instrument(skip(connection))]
 pub async fn add_phrase(
     connection: &mut PgConnection,
     phrase: &str,
@@ -681,32 +701,6 @@ pub async fn add_phrase(
     Ok(phrase)
 }
 
-pub mod public {
-    use chrono::NaiveDateTime;
-    use serde::Serialize;
-
-    use super::Phrase;
-
-    #[derive(Clone, Debug, Serialize)]
-    pub struct Clip {
-        /// The unique identifier for the clip and primary key for the table.
-        pub uuid: String,
-        /// The time when the clip was added to the database.
-        pub created_on: NaiveDateTime,
-        /// The last time the clip was played; this is equal to `created_on` when created.
-        pub last_played: NaiveDateTime,
-        /// Number of times the clip has been played.
-        pub plays: i64,
-        /// The output of speech-to-text on the `audio_file`, optionally used as a matching phrase.
-        pub speech_detected: String,
-        /// A description of the clip for human consumption.
-        pub description: String,
-        /// Path to the audio file, relative to the BTFM_DATA_DIR.
-        pub audio_file: String,
-        pub phrases: Vec<Phrase>,
-    }
-}
-
 #[instrument(skip(connection))]
 pub async fn get_clip(connection: &mut PgConnection, uuid: Uuid) -> Result<Clip, crate::Error> {
     Ok(sqlx::query_as!(
@@ -722,11 +716,12 @@ pub async fn get_clip(connection: &mut PgConnection, uuid: Uuid) -> Result<Clip,
     .await?)
 }
 
+/// Add a clip and any phrases included in the [`ClipUpload`] metadata.
 #[instrument(skip_all)]
 pub async fn add_clip(
     connection: &mut PgConnection,
     data: Vec<u8>,
-    metadata: crate::web::handlers::ClipUpload,
+    metadata: crate::web::serialization::ClipUpload,
     filename: &str,
 ) -> Result<Clip, crate::Error> {
     let config = crate::CONFIG.get().expect("Initialize the config");
