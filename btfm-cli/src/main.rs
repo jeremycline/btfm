@@ -270,7 +270,7 @@ async fn process_command(opts: Cli) -> Result<(), Error> {
                 let phrase = response.json::<gross_hack::Phrase>().await?;
                 println!("{}", serde_json::to_string_pretty(&phrase)?);
                 Ok(())
-            },
+            }
         },
     }
 }
