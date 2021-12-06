@@ -58,7 +58,7 @@ jobs:
           asset_name: btfm-x86_64-unknown-linux-gnu
           asset_content_type: application/octet-stream
       - name: Upload CLI release build
-        id: upload_build
+        id: upload_cli_build
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
