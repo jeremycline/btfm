@@ -93,7 +93,7 @@ enum Error {
 #[derive(StructOpt, Debug)]
 #[structopt(name = "btfm-cli")]
 struct Cli {
-    #[structopt(long, short, env = "BTFM_URL")]
+    #[structopt(long, env = "BTFM_URL")]
     url: Url,
     #[structopt(long, short, env = "BTFM_USER")]
     user: String,
@@ -186,7 +186,10 @@ pub enum Phrase {
 #[tokio::main]
 async fn main() {
     let opts = Cli::from_args();
-    process_command(opts).await.unwrap();
+    match process_command(opts).await {
+        Ok(_) => {}
+        Err(e) => eprintln!("Error: {}", e),
+    };
 }
 
 async fn process_command(opts: Cli) -> Result<(), Error> {

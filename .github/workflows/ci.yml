@@ -41,7 +41,7 @@ jobs:
           export DATABASE_URL=postgres://btfm:password@localhost/btfm
           echo "DATABASE_URL=$DATABASE_URL" >> $GITHUB_ENV
           cargo install sqlx-cli
-          cargo sqlx database setup
+          cargo sqlx database setup --source btfm/migrations/
       - uses: actions-rs/cargo@v1
         with:
           command: build
@@ -83,7 +83,7 @@ jobs:
           export DATABASE_URL=postgres://btfm:password@localhost/btfm
           echo "DATABASE_URL=$DATABASE_URL" >> $GITHUB_ENV
           cargo install sqlx-cli
-          cargo sqlx database setup
+          cargo sqlx database setup --source btfm/migrations/
       - uses: actions-rs/cargo@v1
         with:
           command: clippy
@@ -111,7 +111,7 @@ jobs:
           export DATABASE_URL=postgres://btfm:password@localhost/btfm
           echo "DATABASE_URL=$DATABASE_URL" >> $GITHUB_ENV
           cargo install sqlx-cli
-          cargo sqlx database setup
+          cargo sqlx database setup --source btfm/migrations/
       - uses: actions-rs/cargo@v1
         with:
           command: test
