@@ -183,7 +183,7 @@ pub enum Phrase {
     // },
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() {
     let opts = Cli::from_args();
     match process_command(opts).await {

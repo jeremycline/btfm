@@ -1,7 +1,6 @@
 [package]
 name = "btfm"
-version = "0.14.0"
-authors = ["Jeremy Cline", "Randy Barlow", "Brotivator"]
+version = "0.14.1"
 edition = "2021"
 description = "A Discord bot that plays audio clips based on voice chat"
 license = "GPL-2.0-or-later"
