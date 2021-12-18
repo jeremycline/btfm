@@ -5,6 +5,6 @@ members = [
 	"btfm-cli",
 ]
 
-[profile.release]
-lto = true
-codegen-units = 1
+#[profile.release]
+#lto = true
+#codegen-units = 1

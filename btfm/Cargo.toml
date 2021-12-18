@@ -1,6 +1,6 @@
 [package]
 name = "btfm"
-version = "0.14.1"
+version = "0.14.2"
 edition = "2021"
 description = "A Discord bot that plays audio clips based on voice chat"
 license = "GPL-2.0-or-later"
@@ -31,6 +31,7 @@ structopt = "0.3"
 songbird = {"version" = "0.2.0", features=["default", "builtin-queue"]}
 sqlx = {"version" = "0.5", features=["runtime-tokio-rustls", "postgres", "chrono", "migrate", "macros", "uuid"]}
 tempfile = "3"
+thesaurus = "0.2"
 tracing = "0.1"
 tracing-subscriber = {"version" = "0.3", features=["env-filter"]}
 thiserror = "1.0"

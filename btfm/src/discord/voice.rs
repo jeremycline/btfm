@@ -241,7 +241,9 @@ impl VoiceEventHandler for Receiver {
                 if let Some(audio) = audio {
                     if user.transcriber.is_none() {
                         let (audio_sender, audio_receiver) = mpsc::channel(2048);
-                        let span = tracing::info_span!("stream", id = %Ulid::new());
+                        let span =
+                            tracing::info_span!("stream", id = %Ulid::new(), ssrc = %packet.ssrc);
+                        info!(parent: &span, "Beginning new transcription stream");
                         let text_receiver =
                             transcriber.stream(audio_receiver).instrument(span).await;
                         let locked_call = self.locked_call.clone();
@@ -253,9 +255,13 @@ impl VoiceEventHandler for Receiver {
                         ));
                         user.transcriber = Some(audio_sender);
                     }
-                    if let Some(transcriber) = &user.transcriber {
-                        if let Err(e) = transcriber.send(audio.to_vec()).await {
-                            warn!("Failed to send audio to transcriber: {:?}", e);
+
+                    let transcriber = user.transcriber.take();
+                    if let Some(handle) = transcriber {
+                        if handle.send(audio.to_vec()).await.is_err() {
+                            warn!("Failed to send audio to transcriber");
+                        } else {
+                            user.transcriber.replace(handle);
                         }
                     }
                 } else {
@@ -311,7 +317,7 @@ async fn handle_text(
     let mut snippets = Vec::new();
     let mut receiver = text_receiver;
     while let Some(snippet) = receiver.recv().await {
-        snippets.push(snippet);
+        snippets.push(snippet.replace("\"", ""));
     }
     let text = snippets.join(" ");
     if text.trim().is_empty() {

@@ -207,11 +207,17 @@ async fn process_command(opts: Cli) -> Result<(), Error> {
                 phrases,
             } => {
                 let url = opts.url.join("/v1/clips/")?;
+                let file_name = file
+                    .file_name()
+                    .and_then(|f| f.to_str())
+                    .unwrap()
+                    .to_owned();
                 let clip = File::open(file).await?;
                 let clip_len = clip.metadata().await?.len();
                 let clip_stream = FramedRead::new(clip, BytesCodec::new());
                 let clip_part =
-                    multipart::Part::stream_with_length(Body::wrap_stream(clip_stream), clip_len);
+                    multipart::Part::stream_with_length(Body::wrap_stream(clip_stream), clip_len)
+                        .file_name(file_name);
                 let clip_metadata = serde_json::to_string(&gross_hack::ClipUpload {
                     description,
                     phrases,
