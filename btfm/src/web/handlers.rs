@@ -100,6 +100,17 @@ pub async fn create_clip(
     }
 }
 
+#[instrument(skip(db_pool))]
+pub async fn delete_clip(
+    Extension(db_pool): Extension<PgPool>,
+    Path(ulid): Path<Ulid>,
+) -> Result<Json<Clip>, crate::Error> {
+    let uuid = Uuid::from_u128(ulid.0);
+    let mut conn = db_pool.begin().await?;
+    let clip: Clip = db::remove_clip(&mut conn, uuid).await?.into();
+    Ok(clip.into())
+}
+
 /// Show the phrase associated with a given Ulid.
 #[instrument(skip(db_pool))]
 pub async fn phrase(
@@ -130,5 +141,17 @@ pub async fn create_phrase(
     let phrase: Phrase = db::add_phrase(&mut conn, &phrase_upload.phrase, clip_uuid)
         .await?
         .into();
+    Ok(phrase.into())
+}
+
+/// Show the phrase associated with a given Ulid.
+#[instrument(skip(db_pool))]
+pub async fn delete_phrase(
+    Extension(db_pool): Extension<PgPool>,
+    Path(ulid): Path<Ulid>,
+) -> Result<Json<Phrase>, crate::Error> {
+    let uuid = Uuid::from_u128(ulid.0);
+    let mut conn = db_pool.begin().await?;
+    let phrase: Phrase = db::remove_phrase(&mut conn, uuid).await?.into();
     Ok(phrase.into())
 }

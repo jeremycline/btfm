@@ -13,6 +13,10 @@ pub struct Config {
     /// The API does not offer authentication or TLS; these must be provided by a proxy like NGINX
     /// with `auth_request`.
     pub api_url: Option<SocketAddr>,
+    /// The username to use for API Basic Authentication
+    pub api_user: Option<String>,
+    /// The password to use for API Basic Authentication
+    pub api_password: Option<String>,
     /// The data directory where clips and other application data is stored
     pub data_directory: PathBuf,
     /// The URL to the PostgreSQL database in the format "postgres://<user>:<pass>@host/database_name"
@@ -74,6 +78,8 @@ impl Default for Config {
     fn default() -> Self {
         Config {
             api_url: None,
+            api_user: None,
+            api_password: None,
             data_directory: PathBuf::from(r"/var/lib/btfm/"),
             database_url: "postgres:///btfm".to_string(),
             discord_token: "Go get a Discord API token".to_string(),

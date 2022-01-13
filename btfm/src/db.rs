@@ -701,6 +701,41 @@ pub async fn add_phrase(
     Ok(phrase)
 }
 
+/// Remove the phrase.
+///
+/// # Returns
+///
+/// The phrase that was deleted.
+#[instrument(skip(connection))]
+pub async fn remove_phrase(
+    connection: &mut PgConnection,
+    uuid: Uuid,
+) -> Result<Phrase, crate::Error> {
+    let phrase = sqlx::query_as!(
+        Phrase,
+        "
+            SELECT *
+            FROM phrases
+            WHERE uuid = $1
+            ",
+        uuid,
+    )
+    .fetch_one(&mut *connection)
+    .await?;
+
+    sqlx::query!(
+        "
+            DELETE FROM phrases
+            WHERE uuid = $1
+            ",
+        uuid,
+    )
+    .execute(&mut *connection)
+    .await?;
+
+    Ok(phrase)
+}
+
 #[instrument(skip(connection))]
 pub async fn get_clip(connection: &mut PgConnection, uuid: Uuid) -> Result<Clip, crate::Error> {
     Ok(sqlx::query_as!(
@@ -763,5 +798,48 @@ pub async fn add_clip(
     for phrase in metadata.phrases.unwrap_or_else(Vec::new) {
         add_phrase(&mut *connection, &phrase, clip.uuid).await?;
     }
+    Ok(clip)
+}
+
+/// Remove a clip from the database and remove the audio file associated with it.
+#[instrument(skip(connection))]
+pub async fn remove_clip(connection: &mut PgConnection, uuid: Uuid) -> Result<Clip, crate::Error> {
+    let clip = sqlx::query_as!(
+        Clip,
+        "
+            SELECT *
+            FROM clips
+            WHERE clips.uuid = $1;
+        ",
+        uuid
+    )
+    .fetch_one(&mut *connection)
+    .await?;
+
+    let config = crate::CONFIG.get().expect("Initialize the config");
+    let clip_path = config.data_directory.join(&clip.audio_file);
+
+    match tokio::fs::remove_file(&clip_path).await {
+        Ok(_) => {
+            info!("Removed audio file {}", &clip.audio_file)
+        }
+        Err(err) => {
+            error!(
+                "Failed to remove audio file at {}: {}",
+                &clip.audio_file, err
+            )
+        }
+    }
+
+    sqlx::query!(
+        "
+            DELETE FROM clips
+            WHERE uuid = $1
+            ",
+        uuid,
+    )
+    .execute(&mut *connection)
+    .await?;
+
     Ok(clip)
 }

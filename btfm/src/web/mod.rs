@@ -6,10 +6,13 @@ use axum::{
     routing::get,
     AddExtensionLayer, Json, Router,
 };
-use hyper::Body;
+use hyper::{header, Body};
 use serde_json::json;
 use sqlx::PgPool;
+use tower::ServiceBuilder;
 use tower_http::{
+    compression::CompressionLayer,
+    sensitive_headers::SetSensitiveHeadersLayer,
     trace::{DefaultOnFailure, DefaultOnRequest, DefaultOnResponse, TraceLayer},
     LatencyUnit,
 };
@@ -21,21 +24,32 @@ use crate::Error;
 pub(crate) mod handlers;
 pub(crate) mod serialization;
 
+const SENSITIVE_HEADERS: [header::HeaderName; 1] = [header::AUTHORIZATION];
+
 pub fn create(db: PgPool) -> Router {
-    Router::new()
+    let app = Router::new()
         .route("/status/", get(handlers::status))
-        .route("/v1/clips/:ulid/", get(handlers::clip))
+        .route(
+            "/v1/clips/:ulid/",
+            get(handlers::clip).delete(handlers::delete_clip),
+        )
         .route(
             "/v1/clips/",
             get(handlers::clips).post(handlers::create_clip),
         )
-        .route("/v1/phrases/:ulid/", get(handlers::phrase))
+        .route(
+            "/v1/phrases/:ulid/",
+            get(handlers::phrase).delete(handlers::delete_phrase),
+        )
         .route(
             "/v1/phrases/",
             get(handlers::phrases).post(handlers::create_phrase),
         )
         .fallback(handle_404.into_service())
-        .layer(AddExtensionLayer::new(db))
+        .layer(AddExtensionLayer::new(db));
+
+    let middleware = ServiceBuilder::new()
+        .layer(SetSensitiveHeadersLayer::new(SENSITIVE_HEADERS))
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(|request: &Request<Body>| {
@@ -55,6 +69,9 @@ pub fn create(db: PgPool) -> Router {
                 )
                 .on_failure(DefaultOnFailure::new().level(Level::ERROR)),
         )
+        .layer(CompressionLayer::new());
+
+    app.layer(middleware)
 }
 
 async fn handle_404() -> impl IntoResponse {

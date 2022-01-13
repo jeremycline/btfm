@@ -11,6 +11,12 @@ plays audio clips into the channel in response.
 
 ## Setup
 
+### Discord Registration
+
+You'll need to register a bot with Discord. Go to [the Developer application
+page](https://discord.com/developers/applications) and create an application.
+
+
 Download the [deepspeech native_client build for your
 platform](https://github.com/mozilla/DeepSpeech/releases/tag/v0.9.3), along
 with the
