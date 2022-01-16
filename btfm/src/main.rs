@@ -70,14 +70,26 @@ async fn main() {
                     .map_err(|e| error!("Discord client died: {:?}", e))
             });
 
-            if let Some(socket_addr) = &opts.config.api_url {
-                let app = btfm::web::create(db_pool);
-                let server = axum::Server::bind(socket_addr).serve(app.into_make_service());
-                let server_handle = tokio::spawn(server);
-                let (_first, _second) = tokio::join!(discord_client_handle, server_handle);
-            } else {
-                discord_client_handle.await.unwrap().unwrap();
-            }
+            let http_api = opts.config.http_api.clone();
+            let router = btfm::web::create_router(&http_api, db_pool);
+            let server_handle = match (http_api.tls_certificate, http_api.tls_key) {
+                (None, None) => {
+                    tokio::spawn(axum_server::bind(http_api.url).serve(router.into_make_service()))
+                }
+                (Some(cert), Some(key)) => tokio::spawn(async move {
+                    let tls_config =
+                        axum_server::tls_rustls::RustlsConfig::from_pem_file(cert, key).await?;
+                    axum_server::bind_rustls(http_api.url, tls_config)
+                        .serve(router.into_make_service())
+                        .await
+                }),
+                _ => {
+                    error!("'tls_certificate' and 'tls_key' must both be set or neither should be set.");
+                    return;
+                }
+            };
+
+            let (_first, _second) = tokio::join!(discord_client_handle, server_handle);
         }
 
         cli::Command::Clip(clip_subcommand) => match clip_subcommand {

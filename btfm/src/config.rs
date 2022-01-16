@@ -1,5 +1,9 @@
 /// Defines the configuration file format for BTFM.
-use std::{fmt::Display, net::SocketAddr, path::PathBuf};
+use std::{
+    fmt::Display,
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+    path::PathBuf,
+};
 
 use serde::{Deserialize, Serialize};
 use url::Url;
@@ -8,15 +12,6 @@ use crate::Error;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Config {
-    /// The URL of an HTTP API used to manage the bot.
-    ///
-    /// The API does not offer authentication or TLS; these must be provided by a proxy like NGINX
-    /// with `auth_request`.
-    pub api_url: Option<SocketAddr>,
-    /// The username to use for API Basic Authentication
-    pub api_user: Option<String>,
-    /// The password to use for API Basic Authentication
-    pub api_password: Option<String>,
     /// The data directory where clips and other application data is stored
     pub data_directory: PathBuf,
     /// The URL to the PostgreSQL database in the format "postgres://<user>:<pass>@host/database_name"
@@ -35,6 +30,8 @@ pub struct Config {
     pub deepspeech: DeepSpeech,
     /// Deepgram-specific configuration options
     pub deepgram: Deepgram,
+    /// The HTTP server configution options
+    pub http_api: HttpApi,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -74,12 +71,35 @@ impl Default for Deepgram {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct HttpApi {
+    /// The URL of an HTTP API used to manage the bot.
+    pub url: SocketAddr,
+    /// The username to use for API Basic Authentication; this is used by btfm-cli.
+    pub user: String,
+    /// The password to use for API Basic Authentication; this is used by btfm-cli.
+    pub password: String,
+    /// The path to an x509 certificate the server should use for HTTPS.
+    pub tls_certificate: Option<PathBuf>,
+    /// The path to the key for the given certificate.
+    pub tls_key: Option<PathBuf>,
+}
+
+impl Default for HttpApi {
+    fn default() -> Self {
+        HttpApi {
+            url: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080),
+            user: "admin".to_string(),
+            password: "admin".to_string(),
+            tls_certificate: None,
+            tls_key: None,
+        }
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         Config {
-            api_url: None,
-            api_user: None,
-            api_password: None,
             data_directory: PathBuf::from(r"/var/lib/btfm/"),
             database_url: "postgres:///btfm".to_string(),
             discord_token: "Go get a Discord API token".to_string(),
@@ -87,8 +107,7 @@ impl Default for Config {
             log_channel_id: None,
             guild_id: 0,
             rate_adjuster: 120.0,
-            deepspeech: DeepSpeech::default(),
-            deepgram: Deepgram::default(),
+            ..Default::default()
         }
     }
 }
