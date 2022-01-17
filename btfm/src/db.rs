@@ -598,7 +598,7 @@ pub async fn last_play_time(pool: &PgPool) -> NaiveDateTime {
     let clip_query = sqlx::query!(
         "
         SELECT last_played
-        FROM clips 
+        FROM clips
         ORDER BY last_played DESC
         LIMIT 1"
     )
@@ -799,6 +799,66 @@ pub async fn add_clip(
         add_phrase(&mut *connection, &phrase, clip.uuid).await?;
     }
     Ok(clip)
+}
+
+/// Update a clip's metadata and phrases.
+///
+/// # Arguments
+///
+/// `uuid` - The primary key of the clip to update.
+/// `description` - The new human-readable description of the clip
+///
+/// # Returns
+///
+/// A Result with the number of affected rows when issuing the update.
+#[instrument(skip(connection), fields(phrases_deleted, clip_updated, phrases_added))]
+pub async fn update_clip<S>(
+    connection: &mut PgConnection,
+    uuid: Uuid,
+    description: &str,
+    phrases: &[S],
+) -> Result<(), crate::Error>
+where
+    S: AsRef<str> + std::fmt::Debug,
+{
+    let clip_updated = sqlx::query!(
+        "
+        UPDATE clips
+        SET description = $1
+        WHERE uuid = $2
+        ",
+        description,
+        uuid,
+    )
+    .execute(&mut *connection)
+    .await
+    .map(|update| update.rows_affected())?;
+    tracing::Span::current().record("clip_updated", &clip_updated);
+
+    let phrases_deleted = sqlx::query!(
+        "
+        DELETE FROM phrases
+        WHERE uuid IN (
+            SELECT phrases.uuid
+            FROM phrases
+            LEFT JOIN clips_to_phrases
+            ON phrases.uuid = clips_to_phrases.phrase_uuid
+            WHERE clip_uuid = $1
+        )
+        ",
+        uuid
+    )
+    .execute(&mut *connection)
+    .await
+    .map(|deleted| deleted.rows_affected())?;
+    tracing::Span::current().record("phrases_deleted", &phrases_deleted);
+
+    for phrase in phrases {
+        add_phrase(connection, phrase.as_ref(), uuid).await?;
+    }
+    tracing::Span::current().record("phrases_added", &phrases.len());
+
+    Ok(())
 }
 
 /// Remove a clip from the database and remove the audio file associated with it.

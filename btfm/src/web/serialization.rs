@@ -11,6 +11,14 @@ pub struct Status {
     pub db_connections: u32,
 }
 
+#[derive(Clone, Debug, Serialize)]
+pub struct ClipUpdated {
+    /// The new clip.
+    pub new_clip: Clip,
+    /// The old clip.
+    pub old_clip: Clip,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Clip {
     /// The unique identifier for the clip and primary key for the table.

@@ -9,7 +9,9 @@ use ulid::Ulid;
 
 use crate::db;
 
-use super::serialization::{Clip, ClipUpload, Clips, CreatePhrase, Phrase, Phrases, Status};
+use super::serialization::{
+    Clip, ClipUpdated, ClipUpload, Clips, CreatePhrase, Phrase, Phrases, Status,
+};
 
 /// Reports on the health of the web server.
 #[instrument(skip(db_pool))]
@@ -98,6 +100,33 @@ pub async fn create_clip(
         }
         _ => Err(crate::Error::BadRequest),
     }
+}
+
+#[instrument(skip(db_pool))]
+pub async fn edit_clip(
+    Extension(db_pool): Extension<PgPool>,
+    Path(ulid): Path<Ulid>,
+    Json(clip_metadata): Json<ClipUpload>,
+) -> Result<Json<ClipUpdated>, crate::Error> {
+    let uuid = Uuid::from_u128(ulid.0);
+    let mut transaction = db_pool.begin().await?;
+
+    let mut old_clip: Clip = db::get_clip(&mut transaction, uuid).await?.into();
+    old_clip.load_phrases(&mut transaction).await?;
+
+    db::update_clip(
+        &mut transaction,
+        uuid,
+        &clip_metadata.description,
+        &clip_metadata.phrases.unwrap_or_default(),
+    )
+    .await?;
+
+    let mut new_clip: Clip = db::get_clip(&mut transaction, uuid).await?.into();
+    new_clip.load_phrases(&mut transaction).await?;
+
+    transaction.commit().await?;
+    Ok(ClipUpdated { old_clip, new_clip }.into())
 }
 
 #[instrument(skip(db_pool))]

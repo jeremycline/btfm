@@ -44,7 +44,9 @@ pub fn create_router(config: &HttpApi, db: PgPool) -> Router {
         .route("/status/", get(handlers::status))
         .route(
             "/v1/clips/:ulid/",
-            get(handlers::clip).delete(handlers::delete_clip),
+            get(handlers::clip)
+                .delete(handlers::delete_clip)
+                .put(handlers::edit_clip),
         )
         .route(
             "/v1/clips/",
