@@ -6,7 +6,7 @@ use serenity::{client::Client, framework::StandardFramework, prelude::*};
 use songbird::{driver::DecodeMode, SerenityInit, Songbird};
 use sqlx::postgres::PgPoolOptions;
 use structopt::StructOpt;
-use tracing::{debug, error};
+use tracing::{debug, error, info};
 
 use btfm::discord::{
     text::{Handler, HttpClient},
@@ -74,9 +74,11 @@ async fn main() {
             let router = btfm::web::create_router(&http_api, db_pool);
             let server_handle = match (http_api.tls_certificate, http_api.tls_key) {
                 (None, None) => {
+                    info!("Starting HTTP server on {:?}", &http_api.url);
                     tokio::spawn(axum_server::bind(http_api.url).serve(router.into_make_service()))
                 }
                 (Some(cert), Some(key)) => tokio::spawn(async move {
+                    info!("Starting HTTPS server on {:?}", &http_api.url);
                     let tls_config =
                         axum_server::tls_rustls::RustlsConfig::from_pem_file(cert, key).await?;
                     axum_server::bind_rustls(http_api.url, tls_config)
@@ -89,7 +91,7 @@ async fn main() {
                 }
             };
 
-            let (_first, _second) = tokio::join!(discord_client_handle, server_handle);
+            let (_discord, _http_server) = tokio::join!(discord_client_handle, server_handle);
         }
 
         cli::Command::Clip(clip_subcommand) => match clip_subcommand {

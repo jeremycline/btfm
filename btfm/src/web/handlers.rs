@@ -114,10 +114,15 @@ pub async fn edit_clip(
     let mut old_clip: Clip = db::get_clip(&mut transaction, uuid).await?.into();
     old_clip.load_phrases(&mut transaction).await?;
 
+    let description = match clip_metadata.description.is_empty() {
+        true => &old_clip.description,
+        false => &clip_metadata.description,
+    };
+
     db::update_clip(
         &mut transaction,
         uuid,
-        &clip_metadata.description,
+        description,
         &clip_metadata.phrases.unwrap_or_default(),
     )
     .await?;

@@ -107,7 +107,9 @@ impl Default for Config {
             log_channel_id: None,
             guild_id: 0,
             rate_adjuster: 120.0,
-            ..Default::default()
+            deepspeech: Default::default(),
+            deepgram: Default::default(),
+            http_api: Default::default(),
         }
     }
 }

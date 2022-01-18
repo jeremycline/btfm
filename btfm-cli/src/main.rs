@@ -1,11 +1,13 @@
 use std::{path::PathBuf, time::Duration};
 
+use clap::{Parser, Subcommand};
 use reqwest::{multipart, Body, Url};
-use structopt::StructOpt;
 use thiserror::Error as ThisError;
 use tokio::fs::File;
 use tokio_util::codec::{BytesCodec, FramedRead};
 use ulid::Ulid;
+
+use crate::gross_hack::ClipUpload;
 
 const USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
 
@@ -73,6 +75,14 @@ mod gross_hack {
         pub description: String,
         pub phrases: Option<Vec<String>>,
     }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct ClipUpdated {
+        /// The new clip.
+        pub new_clip: Clip,
+        /// The old clip.
+        pub old_clip: Clip,
+    }
 }
 
 #[derive(ThisError, Debug)]
@@ -90,87 +100,97 @@ enum Error {
 /// Command-line interface for the btfm service
 ///
 /// This supports uploading, editing, and removing clips or trigger phrases.
-#[derive(StructOpt, Debug)]
-#[structopt(name = "btfm-cli")]
+#[derive(clap::Parser, Debug)]
+#[clap(name = "btfm-cli")]
+#[clap(author = "Jeremy Cline <jeremy@jcline.org>")]
+#[clap(about = "Manage clips in the BTFM Discord bot", long_about = None)]
 struct Cli {
-    #[structopt(long, env = "BTFM_URL")]
+    #[clap(long, env = "BTFM_URL")]
     url: Url,
-    #[structopt(long, short, env = "BTFM_USER")]
+    #[clap(long, short, env = "BTFM_USER")]
     user: String,
-    #[structopt(long, short, env = "BTFM_PASSWORD")]
+    #[clap(long, short, env = "BTFM_PASSWORD")]
     password: String,
-    #[structopt(subcommand)]
+    #[clap(subcommand)]
     command: Command,
 }
 
-#[derive(StructOpt, Debug)]
+#[derive(Subcommand, Debug)]
 pub enum Command {
     /// Manage audio clips for the bot
+    #[clap(subcommand)]
     Clip(Clip),
     /// Manage phrases that trigger audio clips
+    #[clap(subcommand)]
     Phrase(Phrase),
 }
 
-#[derive(StructOpt, Debug)]
+#[derive(Subcommand, Debug)]
 pub enum Clip {
     /// Add a new clip to the database
     Add {
         /// A phrase to trigger the new clip
-        #[structopt(short, long)]
+        #[clap(short, long)]
         phrases: Option<Vec<String>>,
         /// A short description of the audio clip
-        #[structopt()]
+        #[clap()]
         description: String,
         /// The filename of the clip.
-        #[structopt(parse(from_os_str))]
+        #[clap(parse(from_os_str))]
         file: PathBuf,
     },
-    // /// Edit an existing clip in the database
-    // Edit {
-    //     /// The clip ID (from "clip list")
-    //     #[structopt()]
-    //     clip_id: Ulid,
-    //     /// A short description of the audio clip
-    //     #[structopt(short, long)]
-    //     description: Option<String>,
-    // },
+    /// Edit an existing clip in the database.
+    ///
+    /// Phrases are replaced rather than appended, so you must provide the complete list of phrases
+    /// each time you edit the clip.
+    Edit {
+        /// The clip ID (from "clip list")
+        #[clap()]
+        clip_id: Ulid,
+        /// A short description of the audio clip
+        #[clap(short, long)]
+        description: Option<String>,
+        /// The phrase or phrases that cause the clip to be played.
+        #[clap(short, long)]
+        phrases: Option<Vec<String>>,
+    },
     /// List clips in the database
     List {},
     // /// Remove clips from the database
     // Remove {
     //     /// The clip ID (from "clip list")
-    //     #[structopt()]
+    //     #[clap()]
     //     clip_id: Ulid,
     // },
 }
 
-#[derive(StructOpt, Debug)]
+#[derive(Subcommand, Debug)]
 pub enum Phrase {
     /// Add a trigger phrase to a clip
     Add {
         /// The clip ID (from "clip list")
-        #[structopt()]
+        #[clap()]
         clip_id: Ulid,
         /// The phrase to associate with the clip
-        #[structopt()]
+        #[clap()]
         phrase: String,
     },
     // /// Remove a phrase as a trigger for a clip
     // Remove {
     //     /// The clip ID (from "clip list")
-    //     #[structopt()]
+    //     #[clap()]
     //     clip_id: Ulid,
     //     /// The phrase ID (from "phrase list")
-    //     #[structopt()]
+    //     #[clap()]
     //     phrase_id: Ulid,
     // },
     // /// Edit an existing phrase in the database
     // Edit {
     //     /// The phrase ID (from "phrase list")
-    //     #[structopt()]
+    //     #[clap()]
     //     phrase_id: Ulid,
     //     /// The new phrase
-    //     #[structopt(short, long)]
+    //     #[clap(short, long)]
     //     phrase: String,
     // },
     /// List phrases in the database
@@ -178,14 +198,14 @@ pub enum Phrase {
     // /// Remove phrases from the database
     // Remove {
     //     /// The phrase ID (from "phrase list")
-    //     #[structopt()]
+    //     #[clap()]
     //     phrase_id: Ulid,
     // },
 }
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    let opts = Cli::from_args();
+    let opts = Cli::parse();
     match process_command(opts).await {
         Ok(_) => {}
         Err(e) => eprintln!("Error: {}", e),
@@ -248,6 +268,29 @@ async fn process_command(opts: Cli) -> Result<(), Error> {
                     .map(|resp| resp.error_for_status())??;
                 let clips = response.json::<gross_hack::Clips>().await?;
                 println!("{}", serde_json::to_string_pretty(&clips)?);
+                Ok(())
+            }
+            Clip::Edit {
+                clip_id,
+                description,
+                phrases,
+            } => {
+                let endpoint = format!("/v1/clips/{}", clip_id);
+                let url = opts.url.join(&endpoint)?;
+                let json = ClipUpload {
+                    description: description.unwrap_or_default(),
+                    phrases,
+                };
+                let response = client
+                    .put(url)
+                    .basic_auth(opts.user, Some(opts.password))
+                    .json(&json)
+                    .send()
+                    .await
+                    .map(|resp| resp.error_for_status())??;
+                let response = response.json::<gross_hack::ClipUpdated>().await?;
+                println!("{}", serde_json::to_string_pretty(&response)?);
+
                 Ok(())
             }
         },
