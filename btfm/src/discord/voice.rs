@@ -342,13 +342,7 @@ async fn handle_text(
             &mut rand::thread_rng(),
         )
     {
-        let msg = format!("The bot heard `{:}`, but was rate-limited", &text);
-        log_event_to_channel(
-            btfm.config.log_channel_id.map(ChannelId),
-            &http_client.http,
-            &msg,
-        )
-        .await;
+        debug!("Rate-limited and the user wasn't polite");
         return;
     }
 
@@ -366,9 +360,10 @@ async fn handle_text(
             .collect::<Vec<String>>()
             .join(", ");
         let msg = format!(
-                                        "This technological terror heard `{:}`, which matched against {} clips;
-                                        ```{}``` was randomly selected. Phrases that would trigger this clip: {}",
-                                        &text, clip_count, &clip, phrases);
+            "This technological terror matched against {} clips;
+            ```{}``` was randomly selected. Phrases that would trigger this clip: {}",
+            clip_count, &clip, phrases
+        );
         log_event_to_channel(
             btfm.config.log_channel_id.map(ChannelId),
             &http_client.http,
@@ -382,13 +377,7 @@ async fn handle_text(
         let mut unlocked_call = call.lock().await;
         unlocked_call.enqueue_source(source);
     } else {
-        let msg = format!("No phrases matched `{}`", &text);
-        log_event_to_channel(
-            btfm.config.log_channel_id.map(ChannelId),
-            &http_client.http,
-            &msg,
-        )
-        .await;
+        debug!("No phrases matched what the bot heard");
     }
 }
 
