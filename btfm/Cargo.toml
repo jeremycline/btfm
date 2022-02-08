@@ -14,7 +14,7 @@ repository = "https://github.com/jeremycline/btfm/"
 axum = {"version" = "0.4", features=["headers", "http1", "json", "multipart", "tower-log"]}
 axum-server = { "version" = "0.3", features = ["tls-rustls"]}
 byteorder = "1"
-clap = "2"
+clap = "3"
 chrono = "0.4"
 deepspeech = { "version" = "0.9" }
 futures = "0.3"

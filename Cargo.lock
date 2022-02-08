@@ -308,7 +308,7 @@ dependencies = [
  "axum-server",
  "byteorder",
  "chrono",
- "clap 2.34.0",
+ "clap 3.0.14",
  "deepspeech",
  "futures",
  "futures-channel",
