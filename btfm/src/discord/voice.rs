@@ -314,9 +314,10 @@ async fn handle_text(
     );
     let btfm = btfm_data.lock().await;
     let rate_adjuster = btfm.config.rate_adjuster;
+    let mut conn = btfm.db.acquire().await.unwrap();
     if !text.contains("excuse me")
         && rate_limit(
-            db::last_play_time(&btfm.db).await,
+            db::last_play_time(&mut conn).await,
             current_time,
             rate_adjuster,
             &mut rand::thread_rng(),
@@ -326,12 +327,11 @@ async fn handle_text(
         return;
     }
 
-    let clips = db::match_phrase(&btfm.db, &text).await.unwrap();
+    let clips = db::match_phrase(&mut conn, &text).await.unwrap();
     let clip_count = clips.len();
     let clip = clips.into_iter().choose(&mut rand::thread_rng());
     if let Some(mut clip) = clip {
-        clip.mark_played(&btfm.db).await.unwrap();
-        let mut conn = btfm.db.acquire().await.unwrap();
+        db::mark_played(&mut conn, &mut clip).await.unwrap();
         let phrases = db::phrases_for_clip(&mut conn, clip.uuid)
             .await
             .unwrap_or_else(|_| vec![])

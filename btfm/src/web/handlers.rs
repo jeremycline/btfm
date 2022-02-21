@@ -35,7 +35,8 @@ pub async fn status(Extension(db_pool): Extension<PgPool>) -> Result<Json<Status
 #[instrument(skip(db_pool))]
 pub async fn clips(Extension(db_pool): Extension<PgPool>) -> Result<Json<Clips>, crate::Error> {
     let mut clips = vec![];
-    for clip in db::Clip::list(&db_pool).await? {
+    let mut conn = db_pool.begin().await?;
+    for clip in db::clips_list(&mut conn).await? {
         let mut conn = db_pool.acquire().await?;
         let mut clip: Clip = clip.into();
         load_phrases(&mut clip, &mut conn).await?;
@@ -162,7 +163,8 @@ pub async fn phrase(
 /// List phrases known to BTFM
 #[instrument(skip(db_pool))]
 pub async fn phrases(Extension(db_pool): Extension<PgPool>) -> Result<Json<Phrases>, crate::Error> {
-    let phrases: Phrases = db_phrases_to_api(db::Phrase::list(&db_pool).await?);
+    let mut conn = db_pool.begin().await?;
+    let phrases: Phrases = db_phrases_to_api(db::list_phrases(&mut conn).await?);
     Ok(phrases.into())
 }
 
@@ -174,7 +176,7 @@ pub async fn create_phrase(
 ) -> Result<Json<Phrase>, crate::Error> {
     let clip_uuid = Uuid::from_u128(phrase_upload.clip.0);
     let mut conn = db_pool.begin().await?;
-    let phrase: Phrase = db::add_phrase(&mut conn, &phrase_upload.phrase, clip_uuid)
+    let phrase: Phrase = db::add_phrase(&mut conn, clip_uuid, &phrase_upload.phrase)
         .await?
         .into();
     Ok(phrase.into())

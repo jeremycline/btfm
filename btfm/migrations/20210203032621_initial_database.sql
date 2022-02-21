@@ -8,15 +8,9 @@ CREATE TABLE IF NOT EXISTS "clips" (
     "audio_file" TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "phrases" (
+CREATE TABLE IF NOT EXISTS "clip_phrases" (
     "uuid" UUID PRIMARY KEY,
-    "phrase" TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS "clips_to_phrases" (
-    "clip_uuid" UUID NOT NULL,
-    "phrase_uuid" UUID NOT NULL,
-    PRIMARY KEY(clip_uuid, phrase_uuid),
-    FOREIGN KEY (clip_uuid) REFERENCES clips(uuid) ON DELETE CASCADE ON UPDATE NO ACTION,
-    FOREIGN KEY (phrase_uuid) REFERENCES phrases(uuid) ON DELETE CASCADE ON UPDATE NO ACTION
+    "clip" UUID NOT NULL,
+    "phrase" TEXT NOT NULL,
+    FOREIGN KEY (clip) REFERENCES clips(uuid) ON DELETE CASCADE ON UPDATE NO ACTION
 );

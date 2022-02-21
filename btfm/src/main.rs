@@ -105,14 +105,15 @@ async fn process_command(opts: cli::Btfm, db_pool: Pool<Postgres>) -> Result<(),
             Ok(())
         }
         cli::Command::Tidy { clean } => {
-            let clips = db::Clip::list(&db_pool).await?;
+            let mut conn = db_pool.acquire().await.unwrap();
+            let clips = db::clips_list(&mut conn).await?;
             println!("Clips without audio files:");
             for clip in clips.iter() {
                 let file = opts.config.data_directory.join(&clip.audio_file);
                 if !file.exists() {
                     println!("{}", clip);
                     if clean {
-                        clip.remove(&db_pool, &opts.config.data_directory).await?;
+                        db::remove_clip(&mut conn, clip.uuid).await?;
                     }
                 }
             }

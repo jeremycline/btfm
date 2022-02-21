@@ -4,21 +4,6 @@ use sqlx::PgConnection;
 use crate::db;
 use btfm_api_structs::{Clip, Phrase, Phrases};
 
-impl From<crate::db::Clip> for Clip {
-    fn from(clip: crate::db::Clip) -> Self {
-        Self {
-            ulid: clip.uuid.into(),
-            created_on: clip.created_on,
-            last_played: clip.last_played,
-            plays: clip.plays,
-            speech_detected: clip.phrase,
-            description: clip.description,
-            audio_file: clip.audio_file,
-            phrases: None,
-        }
-    }
-}
-
 pub async fn load_phrases(
     clip: &mut Clip,
     connection: &mut PgConnection,
