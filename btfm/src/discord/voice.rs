@@ -14,7 +14,7 @@ use serenity::{
 };
 use songbird::{
     input::Input,
-    model::payload::{ClientConnect, ClientDisconnect, Speaking},
+    model::payload::{ClientDisconnect, Speaking},
     Call, CoreEvent, Event, EventContext, EventHandler as VoiceEventHandler,
 };
 use tokio::sync::mpsc;
@@ -69,10 +69,6 @@ pub async fn manage_voice_channel(context: &Context) {
                             );
                             handler.add_global_event(
                                 CoreEvent::VoicePacket.into(),
-                                Receiver::new(context.data.clone(), handler_lock.clone()),
-                            );
-                            handler.add_global_event(
-                                CoreEvent::ClientConnect.into(),
                                 Receiver::new(context.data.clone(), handler_lock.clone()),
                             );
                             handler.add_global_event(
@@ -267,22 +263,6 @@ impl VoiceEventHandler for Receiver {
                 } else {
                     error!("RTP packet event received, but there was no audio. Decode support may not be enabled?");
                 }
-            }
-
-            EventContext::ClientConnect(ClientConnect {
-                audio_ssrc,
-                user_id,
-                ..
-            }) => {
-                debug!("New user ({}) connected", user_id);
-                let locked_btfm_data = Arc::clone(&self.client_data)
-                    .read()
-                    .await
-                    .get::<BtfmData>()
-                    .cloned()
-                    .expect("Expected voice manager");
-                let mut btfm_data = locked_btfm_data.lock().await;
-                btfm_data.ssrc_map.entry(user_id.0).or_insert(*audio_ssrc);
             }
 
             EventContext::ClientDisconnect(ClientDisconnect { user_id, .. }) => {
