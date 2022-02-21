@@ -41,24 +41,25 @@ impl MakeRequestId for MakeRequestUlid {
 /// Create an Axum router configured with middleware.
 pub fn create_router(config: &HttpApi, db: PgPool) -> Router {
     let app = Router::new()
-        .route("/status/", get(handlers::status))
+        .route("/status/", get(handlers::status::get))
+        .route("/v1/clips/:ulid/phrases/", get(handlers::phrase::by_clip))
         .route(
             "/v1/clips/:ulid/",
-            get(handlers::clip)
-                .delete(handlers::delete_clip)
-                .put(handlers::edit_clip),
+            get(handlers::clip::get)
+                .delete(handlers::clip::delete)
+                .put(handlers::clip::edit),
         )
         .route(
             "/v1/clips/",
-            get(handlers::clips).post(handlers::create_clip),
+            get(handlers::clip::get_all).post(handlers::clip::create),
         )
         .route(
             "/v1/phrases/:ulid/",
-            get(handlers::phrase).delete(handlers::delete_phrase),
+            get(handlers::phrase::get).delete(handlers::phrase::delete),
         )
         .route(
             "/v1/phrases/",
-            get(handlers::phrases).post(handlers::create_phrase),
+            get(handlers::phrase::get_all).post(handlers::phrase::create),
         )
         .fallback(handle_404.into_service())
         .layer(AddExtensionLayer::new(db));
