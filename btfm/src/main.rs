@@ -2,17 +2,17 @@
 use std::fs;
 use std::sync::Arc;
 
+use clap::Parser;
 use serenity::{client::Client, framework::StandardFramework, prelude::*};
 use songbird::{driver::DecodeMode, SerenityInit, Songbird};
-use sqlx::postgres::PgPoolOptions;
-use structopt::StructOpt;
+use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
 use tracing::{debug, error, info};
 
 use btfm::discord::{
     text::{Handler, HttpClient},
     BtfmData,
 };
-use btfm::{cli, db, transcode, transcribe, Backend};
+use btfm::{cli, db, Error};
 
 static MIGRATIONS: sqlx::migrate::Migrator = sqlx::migrate!("./migrations/");
 
@@ -20,7 +20,7 @@ static MIGRATIONS: sqlx::migrate::Migrator = sqlx::migrate!("./migrations/");
 async fn main() {
     tracing_subscriber::fmt::init();
 
-    let opts = cli::Btfm::from_args();
+    let opts = cli::Btfm::parse();
     btfm::CONFIG
         .set(opts.config.clone())
         .expect("Failed to set config global");
@@ -44,6 +44,13 @@ async fn main() {
         }
     };
 
+    match process_command(opts, db_pool).await {
+        Ok(_) => {}
+        Err(e) => eprintln!("Error: {}", e),
+    }
+}
+
+async fn process_command(opts: cli::Btfm, db_pool: Pool<Postgres>) -> Result<(), Error> {
     match opts.command {
         cli::Command::Run { backend } => {
             let framework = StandardFramework::new();
@@ -55,27 +62,26 @@ async fn main() {
                 .event_handler(Handler)
                 .framework(framework)
                 .register_songbird_with(songbird)
-                .await
-                .expect("Failed to create client");
+                .await?;
             {
                 let mut data = client.data.write().await;
 
                 data.insert::<HttpClient>(Arc::clone(&client.cache_and_http));
                 data.insert::<BtfmData>(Arc::new(Mutex::new(BtfmData::new(backend).await)));
             }
-            let discord_client_handle = tokio::spawn(async move {
-                client
-                    .start()
-                    .await
-                    .map_err(|e| error!("Discord client died: {:?}", e))
-            });
+            let discord_client_handle = tokio::spawn(async move { client.start().await });
 
             let http_api = opts.config.http_api.clone();
             let router = btfm::web::create_router(&http_api, db_pool);
             let server_handle = match (http_api.tls_certificate, http_api.tls_key) {
                 (None, None) => {
                     info!("Starting HTTP server on {:?}", &http_api.url);
-                    tokio::spawn(axum_server::bind(http_api.url).serve(router.into_make_service()))
+                    tokio::spawn(async move {
+                        axum_server::bind(http_api.url)
+                            .serve(router.into_make_service())
+                            .await
+                            .map_err(Error::Server)
+                    })
                 }
                 (Some(cert), Some(key)) => tokio::spawn(async move {
                     info!("Starting HTTPS server on {:?}", &http_api.url);
@@ -84,160 +90,54 @@ async fn main() {
                     axum_server::bind_rustls(http_api.url, tls_config)
                         .serve(router.into_make_service())
                         .await
+                        .map_err(Error::Server)
                 }),
-                _ => {
-                    error!("'tls_certificate' and 'tls_key' must both be set or neither should be set.");
-                    return;
-                }
+                _ => return Err(Error::ConfigValueError(
+                    "'tls_certificate' and 'tls_key' must both be set or neither should be set."
+                        .into(),
+                )),
             };
 
-            let (_discord, _http_server) = tokio::join!(discord_client_handle, server_handle);
-        }
+            let (discord, http_server) = tokio::join!(discord_client_handle, server_handle);
+            discord??;
+            http_server??;
 
-        cli::Command::Clip(clip_subcommand) => match clip_subcommand {
-            cli::Clip::Add { description, file } => {
-                fs::create_dir_all(opts.config.data_directory.join("clips"))
-                    .expect("Unable to create clips directory");
-
-                let transcriber = transcribe::Transcriber::new(&opts.config, &Backend::default());
-                let audio = transcode::file_to_wav(&file, 16_000).await;
-                let (audio_sender, audio_receiver) = tokio::sync::mpsc::channel(2048);
-                let mut phrase_receiver = transcriber.stream(audio_receiver).await;
-                audio_sender.send(audio).await.unwrap();
-                drop(audio_sender);
-                let phrase = phrase_receiver.blocking_recv().unwrap();
-
-                db::Clip::insert(
-                    &db_pool,
-                    &opts.config.data_directory,
-                    &file,
-                    &description,
-                    &phrase,
-                )
-                .await
-                .unwrap();
-            }
-
-            cli::Clip::Edit {
-                clip_id,
-                description,
-            } => {
-                let mut clip = db::Clip::get(&db_pool, clip_id).await.unwrap();
-                if let Some(desc) = description {
-                    clip.description = desc;
-                }
-                clip.update(&db_pool).await.unwrap();
-            }
-
-            cli::Clip::List {} => {
-                for clip in db::Clip::list(&db_pool).await.unwrap() {
-                    println!("{}", clip);
-                }
-            }
-
-            cli::Clip::Remove { clip_id } => {
-                let clip = db::Clip::get(&db_pool, clip_id).await.unwrap();
-                clip.remove(&db_pool, &opts.config.data_directory)
-                    .await
-                    .unwrap();
-            }
-        },
-
-        cli::Command::Phrase(phrase_subcommand) => match phrase_subcommand {
-            cli::Phrase::Add { phrase } => {
-                db::Phrase::insert(&db_pool, &phrase)
-                    .await
-                    .expect("Failed to add phrase");
-            }
-
-            cli::Phrase::Edit { phrase_id, phrase } => {
-                let db_phrase = db::Phrase::get(&db_pool, phrase_id)
-                    .await
-                    .expect("Unable to get phrase with that ID");
-                db_phrase
-                    .update(&db_pool, &phrase)
-                    .await
-                    .expect("Couldn't set the new phrase for the clip");
-            }
-
-            cli::Phrase::List {} => {
-                for phrase in db::Phrase::list(&db_pool).await.unwrap() {
-                    println!("{}", phrase);
-                }
-            }
-
-            cli::Phrase::Remove { phrase_id } => {
-                let db_phrase = db::Phrase::get(&db_pool, phrase_id)
-                    .await
-                    .expect("Unable to get phrase with that ID");
-                db_phrase
-                    .remove(&db_pool)
-                    .await
-                    .expect("Failed to remove phrase");
-            }
-            cli::Phrase::Trigger { clip_id, phrase_id } => {
-                db::ClipPhrase::insert(&db_pool, clip_id, phrase_id)
-                    .await
-                    .unwrap();
-            }
-            cli::Phrase::Untrigger { clip_id, phrase_id } => {
-                db::ClipPhrase::remove(&db_pool, clip_id, phrase_id)
-                    .await
-                    .unwrap();
-            }
-        },
-        cli::Command::Trigger { clip_id, phrase } => {
-            match db::Phrase::insert(&db_pool, &phrase).await {
-                Ok(phrase) => {
-                    db::ClipPhrase::insert(&db_pool, clip_id, phrase.uuid)
-                        .await
-                        .unwrap();
-                }
-                Err(e) => {
-                    println!("Unable to add phrase: {:?}", e);
-                }
-            }
+            Ok(())
         }
         cli::Command::Tidy { clean } => {
-            let clips = db::Clip::list(&db_pool)
-                .await
-                .expect("Failed to query the database for clips");
+            let clips = db::Clip::list(&db_pool).await?;
             println!("Clips without audio files:");
             for clip in clips.iter() {
                 let file = opts.config.data_directory.join(&clip.audio_file);
                 if !file.exists() {
                     println!("{}", clip);
                     if clean {
-                        clip.remove(&db_pool, &opts.config.data_directory)
-                            .await
-                            .unwrap();
+                        clip.remove(&db_pool, &opts.config.data_directory).await?;
                     }
                 }
             }
 
             let clip_dir = opts.config.data_directory.join("clips");
-            match fs::read_dir(&clip_dir) {
-                Ok(files) => {
-                    println!("Audio files without clips:");
-                    let clip_names: Vec<String> =
-                        clips.iter().map(|clip| clip.audio_file.clone()).collect();
-                    for file in files.flatten() {
-                        let file_namish = "clips/".to_owned() + file.file_name().to_str().unwrap();
-                        if !clip_names.iter().any(|p| p == &file_namish) {
-                            let file_path = file.path();
-                            println!("{}", &file_path.to_str().unwrap());
-                            if clean {
-                                if let Err(e) = tokio::fs::remove_file(file.path()).await {
-                                    println!("Failed to remove file: {}", e)
-                                }
+            let files = fs::read_dir(&clip_dir)?;
+            println!("Audio files without clips:");
+            let clip_names: Vec<String> =
+                clips.iter().map(|clip| clip.audio_file.clone()).collect();
+            for file in files.flatten() {
+                let file_namish = "clips/".to_owned() + file.file_name().to_str().unwrap();
+                if !clip_names.iter().any(|p| p == &file_namish) {
+                    let file_path = file.path();
+                    if let Some(p) = file_path.to_str() {
+                        println!("{}", p);
+                        if clean {
+                            if let Err(e) = tokio::fs::remove_file(file.path()).await {
+                                println!("Failed to remove file: {}", e)
                             }
                         }
                     }
                 }
-                Err(e) => {
-                    println!("Unable to read clips: {}", e)
-                }
             }
+
+            Ok(())
         }
     }
 }

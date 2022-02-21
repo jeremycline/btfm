@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-use clap::arg_enum;
 use once_cell::sync::OnceCell;
 use serde::Serializer;
 use sqlx::types::Uuid;
@@ -18,24 +17,18 @@ pub enum Error {
     ConfigReadError(#[from] std::io::Error),
     #[error("Configuration file could not be parsed: {0}")]
     ConfigParseError(#[from] toml::de::Error),
+    #[error("Configuration file contains invalid values: {0}")]
+    ConfigValueError(String),
     #[error("Invalid backend provided")]
     BackendParseError,
+    #[error("The Discord client encountered an error: {0}")]
+    Serenity(#[from] serenity::Error),
+    #[error("HTTP server encountered an error: {0}")]
+    Server(std::io::Error),
+    #[error("Tokio task failed: {0}")]
+    TokioTask(#[from] tokio::task::JoinError),
     #[error("Client request is invalid")]
     BadRequest,
-}
-
-arg_enum! {
-#[derive(Debug)]
-pub enum Backend {
-    DeepSpeech,
-    Deepgram,
-}
-}
-
-impl Default for Backend {
-    fn default() -> Self {
-        Backend::DeepSpeech
-    }
 }
 
 /// Serializer for UUIDs
@@ -53,3 +46,5 @@ pub mod discord;
 pub mod transcode;
 pub mod transcribe;
 pub mod web;
+
+use cli::Backend;

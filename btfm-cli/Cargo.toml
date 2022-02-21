@@ -20,7 +20,7 @@ version = "0.4"
 features = ["serde"]
 
 [dependencies.clap]
-version = "3.0"
+version = "3.1"
 features = ["derive", "cargo", "env", "unicode", "wrap_help"]
 
 [dependencies.reqwest]
