@@ -1,5 +1,6 @@
 use std::{path::PathBuf, time::Duration};
 
+use btfm_api_structs::{Clip, ClipUpdated, ClipUpload, Clips, CreatePhrase, Phrase, Phrases};
 use clap::{Parser, Subcommand};
 use reqwest::{multipart, Body, Url};
 use thiserror::Error as ThisError;
@@ -7,83 +8,7 @@ use tokio::fs::File;
 use tokio_util::codec::{BytesCodec, FramedRead};
 use ulid::Ulid;
 
-use crate::gross_hack::ClipUpload;
-
 const USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
-
-// I need to factor these out and move the From impls around I think
-mod gross_hack {
-    /// Defines public-facing structures used in the web API
-    use chrono::NaiveDateTime;
-    use serde::{Deserialize, Serialize};
-
-    #[derive(Serialize)]
-    pub struct Status {
-        pub db_version: Option<u32>,
-        pub db_connections: u32,
-    }
-
-    #[derive(Clone, Debug, Serialize, Deserialize)]
-    pub struct Clip {
-        /// The unique identifier for the clip and primary key for the table.
-        pub ulid: ulid::Ulid,
-        /// The time when the clip was added to the database.
-        pub created_on: NaiveDateTime,
-        /// The last time the clip was played; this is equal to `created_on` when created.
-        pub last_played: NaiveDateTime,
-        /// Number of times the clip has been played.
-        pub plays: i64,
-        /// The output of speech-to-text on the `audio_file`, optionally used as a matching phrase.
-        pub speech_detected: String,
-        /// A description of the clip for human consumption.
-        pub description: String,
-        /// Path to the audio file, relative to the BTFM_DATA_DIR.
-        pub audio_file: String,
-        /// Phrases associated with the clip.
-        pub phrases: Option<Phrases>,
-    }
-
-    #[derive(Debug, Deserialize, Serialize)]
-    pub struct Clips {
-        pub items: u64,
-        pub clips: Vec<Clip>,
-    }
-
-    /// A phrase used to trigger one or more clips
-    #[derive(Clone, Debug, Serialize, Deserialize)]
-    pub struct Phrase {
-        pub ulid: ulid::Ulid,
-        pub phrase: String,
-    }
-
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct CreatePhrase {
-        /// The phrase.
-        pub phrase: String,
-        /// The clip to associate the phrase to.
-        pub clip: ulid::Ulid,
-    }
-
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct Phrases {
-        pub items: u64,
-        pub phrases: Vec<Phrase>,
-    }
-
-    #[derive(Debug, Deserialize, Serialize)]
-    pub struct ClipUpload {
-        pub description: String,
-        pub phrases: Option<Vec<String>>,
-    }
-
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct ClipUpdated {
-        /// The new clip.
-        pub new_clip: Clip,
-        /// The old clip.
-        pub old_clip: Clip,
-    }
-}
 
 #[derive(ThisError, Debug)]
 enum Error {
@@ -119,14 +44,14 @@ struct Cli {
 pub enum Command {
     /// Manage audio clips for the bot
     #[clap(subcommand)]
-    Clip(Clip),
+    Clip(ClipCommand),
     /// Manage phrases that trigger audio clips
     #[clap(subcommand)]
-    Phrase(Phrase),
+    Phrase(PhraseCommand),
 }
 
 #[derive(Subcommand, Debug)]
-pub enum Clip {
+pub enum ClipCommand {
     /// Add a new clip to the database
     Add {
         /// A phrase to trigger the new clip
@@ -165,7 +90,7 @@ pub enum Clip {
 }
 
 #[derive(Subcommand, Debug)]
-pub enum Phrase {
+pub enum PhraseCommand {
     /// Add a trigger phrase to a clip
     Add {
         /// The clip ID (from "clip list")
@@ -221,7 +146,7 @@ async fn process_command(opts: Cli) -> Result<(), Error> {
 
     match opts.command {
         Command::Clip(subcommand) => match subcommand {
-            Clip::Add {
+            ClipCommand::Add {
                 description,
                 file,
                 phrases,
@@ -238,7 +163,7 @@ async fn process_command(opts: Cli) -> Result<(), Error> {
                 let clip_part =
                     multipart::Part::stream_with_length(Body::wrap_stream(clip_stream), clip_len)
                         .file_name(file_name);
-                let clip_metadata = serde_json::to_string(&gross_hack::ClipUpload {
+                let clip_metadata = serde_json::to_string(&ClipUpload {
                     description,
                     phrases,
                 })?;
@@ -254,11 +179,11 @@ async fn process_command(opts: Cli) -> Result<(), Error> {
                     .send()
                     .await
                     .map(|resp| resp.error_for_status())??;
-                let clip = response.json::<gross_hack::Clip>().await?;
+                let clip = response.json::<Clip>().await?;
                 println!("{}", serde_json::to_string_pretty(&clip)?);
                 Ok(())
             }
-            Clip::List {} => {
+            ClipCommand::List {} => {
                 let url = opts.url.join("/v1/clips/")?;
                 let response = client
                     .get(url)
@@ -266,11 +191,11 @@ async fn process_command(opts: Cli) -> Result<(), Error> {
                     .send()
                     .await
                     .map(|resp| resp.error_for_status())??;
-                let clips = response.json::<gross_hack::Clips>().await?;
+                let clips = response.json::<Clips>().await?;
                 println!("{}", serde_json::to_string_pretty(&clips)?);
                 Ok(())
             }
-            Clip::Edit {
+            ClipCommand::Edit {
                 clip_id,
                 description,
                 phrases,
@@ -288,14 +213,14 @@ async fn process_command(opts: Cli) -> Result<(), Error> {
                     .send()
                     .await
                     .map(|resp| resp.error_for_status())??;
-                let response = response.json::<gross_hack::ClipUpdated>().await?;
+                let response = response.json::<ClipUpdated>().await?;
                 println!("{}", serde_json::to_string_pretty(&response)?);
 
                 Ok(())
             }
         },
         Command::Phrase(subcommand) => match subcommand {
-            Phrase::List {} => {
+            PhraseCommand::List {} => {
                 let url = opts.url.join("/v1/phrases/")?;
                 let response = client
                     .get(url)
@@ -303,23 +228,23 @@ async fn process_command(opts: Cli) -> Result<(), Error> {
                     .send()
                     .await
                     .map(|resp| resp.error_for_status())??;
-                let phrases = response.json::<gross_hack::Phrases>().await?;
+                let phrases = response.json::<Phrases>().await?;
                 println!("{}", serde_json::to_string_pretty(&phrases)?);
                 Ok(())
             }
-            Phrase::Add { clip_id, phrase } => {
+            PhraseCommand::Add { clip_id, phrase } => {
                 let url = opts.url.join("/v1/phrases/")?;
                 let response = client
                     .post(url)
                     .basic_auth(opts.user, Some(opts.password))
-                    .json(&gross_hack::CreatePhrase {
+                    .json(&CreatePhrase {
                         clip: clip_id,
                         phrase,
                     })
                     .send()
                     .await
                     .map(|resp| resp.error_for_status())??;
-                let phrase = response.json::<gross_hack::Phrase>().await?;
+                let phrase = response.json::<Phrase>().await?;
                 println!("{}", serde_json::to_string_pretty(&phrase)?);
                 Ok(())
             }

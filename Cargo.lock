@@ -315,6 +315,7 @@ version = "0.16.0"
 dependencies = [
  "axum",
  "axum-server",
+ "btfm-api-structs",
  "byteorder",
  "chrono",
  "clap",
@@ -349,9 +350,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "btfm-api-structs"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "ulid",
+]
+
+[[package]]
 name = "btfm-cli"
 version = "0.2.0"
 dependencies = [
+ "btfm-api-structs",
  "chrono",
  "clap",
  "futures",

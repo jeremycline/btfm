@@ -1,0 +1,21 @@
+[package]
+name = "btfm-api-structs"
+version = "0.1.0"
+edition = "2021"
+description = "Structures used in BTFM's HTTP API."
+license = "GPL-2.0-or-later"
+readme = "README.md"
+repository = "https://github.com/jeremycline/btfm/"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[dependencies.chrono]
+version = "0.4"
+features = ["serde"]
+
+[dependencies.serde]
+version = "1"
+features = ["derive"]
+
+[dependencies.ulid]
+version = "0.5"
+features = ["serde"]

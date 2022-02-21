@@ -9,9 +9,11 @@ use ulid::Ulid;
 
 use crate::db;
 
-use super::serialization::{
+use btfm_api_structs::{
     Clip, ClipUpdated, ClipUpload, Clips, CreatePhrase, Phrase, Phrases, Status,
 };
+
+use super::serialization::{db_phrases_to_api, load_phrases};
 
 /// Reports on the health of the web server.
 #[instrument(skip(db_pool))]
@@ -36,7 +38,7 @@ pub async fn clips(Extension(db_pool): Extension<PgPool>) -> Result<Json<Clips>,
     for clip in db::Clip::list(&db_pool).await? {
         let mut conn = db_pool.acquire().await?;
         let mut clip: Clip = clip.into();
-        clip.load_phrases(&mut conn).await?;
+        load_phrases(&mut clip, &mut conn).await?;
         clips.push(clip);
     }
     Ok(Clips {
@@ -55,7 +57,7 @@ pub async fn clip(
     let uuid = Uuid::from_u128(ulid.0);
     let mut conn = db_pool.begin().await?;
     let mut clip: Clip = db::get_clip(&mut conn, uuid).await?.into();
-    clip.load_phrases(&mut conn).await?;
+    load_phrases(&mut clip, &mut conn).await?;
     Ok(clip.into())
 }
 
@@ -94,7 +96,7 @@ pub async fn create_clip(
             let mut clip: Clip = db::add_clip(&mut transaction, data.to_vec(), metadata, &filename)
                 .await?
                 .into();
-            clip.load_phrases(&mut transaction).await?;
+            load_phrases(&mut clip, &mut transaction).await?;
             transaction.commit().await?;
             Ok(clip.into())
         }
@@ -112,7 +114,7 @@ pub async fn edit_clip(
     let mut transaction = db_pool.begin().await?;
 
     let mut old_clip: Clip = db::get_clip(&mut transaction, uuid).await?.into();
-    old_clip.load_phrases(&mut transaction).await?;
+    load_phrases(&mut old_clip, &mut transaction).await?;
 
     let description = match clip_metadata.description.is_empty() {
         true => &old_clip.description,
@@ -128,7 +130,7 @@ pub async fn edit_clip(
     .await?;
 
     let mut new_clip: Clip = db::get_clip(&mut transaction, uuid).await?.into();
-    new_clip.load_phrases(&mut transaction).await?;
+    load_phrases(&mut new_clip, &mut transaction).await?;
 
     transaction.commit().await?;
     Ok(ClipUpdated { old_clip, new_clip }.into())
@@ -160,7 +162,7 @@ pub async fn phrase(
 /// List phrases known to BTFM
 #[instrument(skip(db_pool))]
 pub async fn phrases(Extension(db_pool): Extension<PgPool>) -> Result<Json<Phrases>, crate::Error> {
-    let phrases: Phrases = db::Phrase::list(&db_pool).await?.into();
+    let phrases: Phrases = db_phrases_to_api(db::Phrase::list(&db_pool).await?);
     Ok(phrases.into())
 }
 

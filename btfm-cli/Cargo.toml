@@ -15,6 +15,10 @@ serde_json = "1"
 thiserror = "1"
 url = "2"
 
+[dependencies.btfm-api-structs]
+path = "../btfm-api-structs"
+version = "0.1"
+
 [dependencies.chrono]
 version = "0.4"
 features = ["serde"]

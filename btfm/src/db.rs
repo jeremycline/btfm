@@ -3,6 +3,7 @@
 // Provides structures and functions for interacting with the database.
 use std::{fs, path::Path};
 
+use btfm_api_structs::ClipUpload;
 use chrono::NaiveDateTime;
 use rand::{distributions::Alphanumeric, prelude::*};
 use serde::Serialize;
@@ -756,7 +757,7 @@ pub async fn get_clip(connection: &mut PgConnection, uuid: Uuid) -> Result<Clip,
 pub async fn add_clip(
     connection: &mut PgConnection,
     data: Vec<u8>,
-    metadata: crate::web::serialization::ClipUpload,
+    metadata: ClipUpload,
     filename: &str,
 ) -> Result<Clip, crate::Error> {
     let config = crate::CONFIG.get().expect("Initialize the config");

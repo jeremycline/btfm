@@ -18,6 +18,10 @@ features = ["headers", "http1", "json", "multipart", "tower-log"]
 version = "0.3"
 features = ["tls-rustls"]
 
+[dependencies.btfm-api-structs]
+path = "../btfm-api-structs"
+version = "0.1"
+
 [dependencies.byteorder]
 version = "1"
 
