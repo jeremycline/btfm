@@ -2,7 +2,8 @@
 
 use std::sync::Arc;
 
-use tracing::{debug, info};
+use songbird::CoreEvent;
+use tracing::{debug, error, info, warn};
 
 use serenity::{
     async_trait,
@@ -15,7 +16,7 @@ use serenity::{
     prelude::*,
 };
 
-use super::voice::{hello_there, manage_voice_channel};
+use super::voice::{hello_there, Receiver};
 use super::BtfmData;
 
 pub struct HttpClient;
@@ -25,11 +26,87 @@ impl TypeMapKey for HttpClient {
 
 pub struct Handler;
 
+impl Handler {
+    /// Join or part from the configured voice channel. Called on startup and
+    /// if an event happens for the voice channel. If the bot is the only user in the
+    /// channel it will leave. If there's a non-bot user in the channel it'll join.
+    ///
+    /// # Arguments
+    ///
+    /// `context` - The serenity context for the event. Either when the ready event
+    ///             fires or a user joins/parts/mutes/etc.
+    async fn manage_voice_channel(&self, context: &Context) {
+        let manager = songbird::get(context)
+            .await
+            .expect("Songbird client missing")
+            .clone();
+
+        let btfm_data_lock = context
+            .data
+            .read()
+            .await
+            .get::<BtfmData>()
+            .cloned()
+            .expect("Expected BtfmData in TypeMap");
+        let mut btfm_data = btfm_data_lock.lock().await;
+
+        if let Ok(channel) = context.http.get_channel(btfm_data.config.channel_id).await {
+            match channel.guild() {
+                Some(guild_channel) => {
+                    if let Ok(members) = guild_channel.members(&context.cache).await {
+                        if !members.iter().any(|m| !m.user.bot) {
+                            if let Err(e) = manager.remove(btfm_data.config.guild_id).await {
+                                info!("Failed to remove guild? {:?}", e);
+                            }
+                            btfm_data.user_history.clear();
+                        } else if manager.get(btfm_data.config.guild_id).is_none() {
+                            let (handler_lock, result) = manager
+                                .join(btfm_data.config.guild_id, btfm_data.config.channel_id)
+                                .await;
+                            if result.is_ok() {
+                                let mut handler = handler_lock.lock().await;
+                                handler.add_global_event(
+                                    CoreEvent::SpeakingUpdate.into(),
+                                    Receiver::new(context.data.clone(), handler_lock.clone()),
+                                );
+                                handler.add_global_event(
+                                    CoreEvent::VoicePacket.into(),
+                                    Receiver::new(context.data.clone(), handler_lock.clone()),
+                                );
+                                handler.add_global_event(
+                                    CoreEvent::ClientDisconnect.into(),
+                                    Receiver::new(context.data.clone(), handler_lock.clone()),
+                                );
+                            } else {
+                                error!(
+                                    "Unable to join {:?} on {:?}",
+                                    &btfm_data.config.guild_id, &btfm_data.config.channel_id
+                                );
+                            }
+                        }
+                    }
+                }
+                None => {
+                    error!(
+                        "{:?} is not a Guild channel and is not supported!",
+                        btfm_data.config.channel_id
+                    );
+                }
+            }
+        } else {
+            warn!(
+                "Unable to retrieve channel details for {:?}, ignoring voice state update.",
+                btfm_data.config.channel_id
+            );
+        }
+    }
+}
+
 #[async_trait]
 impl EventHandler for Handler {
     async fn ready(&self, context: Context, ready: Ready) {
         info!("Connected as {}", ready.user.name);
-        manage_voice_channel(&context).await;
+        self.manage_voice_channel(&context).await;
     }
 
     async fn voice_state_update(
@@ -44,7 +121,7 @@ impl EventHandler for Handler {
         }
 
         debug!("voice_state_update: old={:?}  new={:?}", old, new);
-        manage_voice_channel(&context).await;
+        self.manage_voice_channel(&context).await;
 
         let manager = songbird::get(&context)
             .await
