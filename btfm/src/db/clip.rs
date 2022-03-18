@@ -146,6 +146,11 @@ pub async fn match_phrase(
     let clips = clips_list(connection).await?;
     let phrases = super::list_phrases(connection).await?;
 
+    // And As It Is Such, So Also As Such Is It Unto You
+    if phrase.contains("random") {
+        return Ok(clips);
+    }
+
     let mut matching_clips = Vec::new();
     for clip in clips {
         if phrase.contains(&clip.phrase) && clip.phrase.split_whitespace().count() > 2_usize {
@@ -153,14 +158,36 @@ pub async fn match_phrase(
             matching_clips.push(clip);
         }
     }
+    let synonym = synonym(phrase);
+    info!("Considering {} as a synonym", synonym);
     for potential_phrase in phrases {
-        if phrase.contains(&potential_phrase.phrase) {
+        if phrase.contains(&potential_phrase.phrase) || synonym.contains(&potential_phrase.phrase) {
             let clip = get_clip(connection, potential_phrase.clip).await?;
             matching_clips.push(clip);
             info!("Matched on '{}'", &potential_phrase);
         }
     }
     Ok(matching_clips)
+}
+
+fn synonym(phrase: &str) -> String {
+    let mut new_phrase = String::new();
+    for word in phrase.split_whitespace() {
+        if let Ok(synonyms) = thesaurus::Thesaurus::synonym(word, None) {
+            new_phrase.push_str(
+                &synonyms
+                    .words
+                    .into_iter()
+                    .choose(&mut rand::thread_rng())
+                    .map(|mut w| {
+                        w.name.push(' ');
+                        w.name
+                    })
+                    .unwrap_or_else(String::new),
+            );
+        }
+    }
+    new_phrase
 }
 
 #[instrument(skip(connection))]
@@ -222,7 +249,7 @@ pub async fn add_clip(
         audio_file: record.audio_file,
     })?;
 
-    for phrase in metadata.phrases.unwrap_or_else(Vec::new) {
+    for phrase in metadata.phrases.unwrap_or_default() {
         super::add_phrase(&mut *connection, clip.uuid, &phrase).await?;
     }
     Ok(clip)

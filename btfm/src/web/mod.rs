@@ -1,10 +1,11 @@
 use axum::{
     body::BoxBody,
+    extract::Extension,
     handler::Handler,
     http::{Request, Response, StatusCode},
     response::IntoResponse,
     routing::get,
-    AddExtensionLayer, Json, Router,
+    Json, Router,
 };
 use hyper::header;
 use serde_json::json;
@@ -62,7 +63,7 @@ pub fn create_router(config: &HttpApi, db: PgPool) -> Router {
             get(handlers::phrase::get_all).post(handlers::phrase::create),
         )
         .fallback(handle_404.into_service())
-        .layer(AddExtensionLayer::new(db));
+        .layer(Extension(db));
 
     // Ordering matters here; requests pass through middleware top-to-bottom and responses bottom-to-top
     let middleware = ServiceBuilder::new()

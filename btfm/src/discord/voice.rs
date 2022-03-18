@@ -297,7 +297,7 @@ async fn handle_text(
     let mut snippets = Vec::new();
     let mut receiver = text_receiver;
     while let Some(snippet) = receiver.recv().await {
-        snippets.push(snippet.replace("\"", ""));
+        snippets.push(snippet.replace('\"', ""));
     }
     let text = snippets.join(" ");
     if text.trim().is_empty() {

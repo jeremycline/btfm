@@ -1,6 +1,6 @@
 [package]
 name = "btfm"
-version = "0.16.0"
+version = "0.17.0"
 edition = "2021"
 description = "A Discord bot that plays audio clips based on voice chat"
 license = "GPL-2.0-or-later"
@@ -99,7 +99,7 @@ version = "1"
 features=["full"]
 
 [dependencies.tokio-tungstenite]
-version = "0.17"
+version = "0.16"
 features = ["rustls"]
 
 [dependencies.tokio-stream]
