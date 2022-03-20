@@ -7,6 +7,6 @@ mod phrase;
 
 pub use clip::{
     add_clip, clips_list, get_clip, last_play_time, mark_played, match_phrase, remove_clip,
-    update_clip,
+    update_clip, Clip,
 };
 pub use phrase::{add_phrase, get_phrase, list_phrases, phrases_for_clip, remove_phrase, Phrase};

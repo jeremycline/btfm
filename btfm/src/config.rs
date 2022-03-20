@@ -32,6 +32,8 @@ pub struct Config {
     pub deepgram: Deepgram,
     /// The HTTP server configution options
     pub http_api: HttpApi,
+    /// The time between random clip plays, in seconds.
+    pub random_clip_interval: u64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -110,6 +112,7 @@ impl Default for Config {
             deepspeech: Default::default(),
             deepgram: Default::default(),
             http_api: Default::default(),
+            random_clip_interval: 60 * 15,
         }
     }
 }

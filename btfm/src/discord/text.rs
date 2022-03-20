@@ -1,10 +1,8 @@
 //! Handlers for Discord non-voice events.
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
-use songbird::CoreEvent;
-use tracing::{debug, error, info, warn};
-
+use rand::prelude::IteratorRandom;
 use serenity::{
     async_trait,
     client::{Context, EventHandler},
@@ -15,6 +13,11 @@ use serenity::{
     },
     prelude::*,
 };
+use songbird::{Call, CoreEvent};
+use sqlx::PgPool;
+use tracing::{debug, error, info, warn};
+
+use crate::db::Clip;
 
 use super::voice::{hello_there, Receiver};
 use super::BtfmData;
@@ -22,6 +25,44 @@ use super::BtfmData;
 pub struct HttpClient;
 impl TypeMapKey for HttpClient {
     type Value = Arc<serenity::CacheAndHttp>;
+}
+
+async fn play_clip_at_interval(call: Arc<Mutex<Call>>, db_pool: PgPool) {
+    info!("Starting task to play clips an interval");
+    let config = crate::CONFIG
+        .get()
+        .expect("Configuration must be set prior to starting the Serenity app");
+
+    loop {
+        tokio::time::sleep(Duration::from_secs(config.random_clip_interval)).await;
+        {
+            let handle = call.lock().await;
+            if handle.current_connection().is_none() {
+                info!("Shutting down the random clip player since we don't seem to be connected");
+                return;
+            }
+        }
+        {
+            let mut conn = db_pool.acquire().await.unwrap();
+            if let Ok(clips) = crate::db::clips_list(&mut conn).await {
+                if let Some(clip) = select_clip(clips) {
+                    if let Ok(source) =
+                        songbird::ffmpeg(config.data_directory.join(clip.audio_file)).await
+                    {
+                        info!("Playing a random clip to keep things spicy");
+                        let mut handle = call.lock().await;
+                        handle.enqueue_source(source)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// This function only exists to work around the compiler being upset that the RNG might be used
+/// after an await, and even dropping it immediately doesn't help.
+fn select_clip(clips: Vec<Clip>) -> Option<Clip> {
+    clips.into_iter().choose(&mut rand::thread_rng())
 }
 
 pub struct Handler;
@@ -64,6 +105,11 @@ impl Handler {
                                 .join(btfm_data.config.guild_id, btfm_data.config.channel_id)
                                 .await;
                             if result.is_ok() {
+                                tokio::spawn(play_clip_at_interval(
+                                    Arc::clone(&handler_lock),
+                                    btfm_data.db.clone(),
+                                ));
+
                                 let mut handler = handler_lock.lock().await;
                                 handler.add_global_event(
                                     CoreEvent::SpeakingUpdate.into(),
