@@ -11,7 +11,7 @@ repository = "https://github.com/jeremycline/btfm/"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies.axum]
-version = "0.4"
+version = "0.5"
 features = ["headers", "http1", "json", "multipart", "tower-log"]
 
 [dependencies.axum-server]
@@ -37,6 +37,7 @@ version = "0.9"
 
 [dependencies.futures]
 version = "0.3"
+
 [dependencies.futures-channel]
 version = "0.3"
 
