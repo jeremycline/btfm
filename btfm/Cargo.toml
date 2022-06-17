@@ -79,7 +79,7 @@ version = "0.2.0"
 features=["default", "builtin-queue"]
 
 [dependencies.sqlx]
-version = "0.5"
+version = "0.6"
 features=["runtime-tokio-rustls", "postgres", "chrono", "migrate", "macros", "uuid"]
 
 [dependencies.tempfile]
