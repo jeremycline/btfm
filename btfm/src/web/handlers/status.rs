@@ -1,6 +1,6 @@
 use axum::{extract::Extension, Json};
 use hyper::StatusCode;
-use sqlx::{postgres::PgConnectionInfo, PgPool};
+use sqlx::PgPool;
 
 use btfm_api_structs::Status;
 use tracing::{error, instrument};

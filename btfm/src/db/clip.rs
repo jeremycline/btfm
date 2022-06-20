@@ -173,15 +173,14 @@ pub async fn match_phrase(
 fn synonym(phrase: &str) -> String {
     let mut new_phrase = String::new();
     for word in phrase.split_whitespace() {
-        if let Ok(synonyms) = thesaurus::Thesaurus::synonym(word, None) {
+        if let Some(synonyms) = thesaurus::synonym(word) {
             new_phrase.push_str(
                 &synonyms
-                    .words
                     .into_iter()
                     .choose(&mut rand::thread_rng())
                     .map(|mut w| {
-                        w.name.push(' ');
-                        w.name
+                        w.push(' ');
+                        w
                     })
                     .unwrap_or_else(String::new),
             );

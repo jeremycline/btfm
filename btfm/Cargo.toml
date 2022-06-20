@@ -8,6 +8,10 @@ documentation = "https://docs.rs/btfm/"
 readme = "../README.md"
 repository = "https://github.com/jeremycline/btfm/"
 
+[dependencies]
+thesaurus= "0.3.1"
+uuid= "1.1.2"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies.axum]
@@ -15,7 +19,7 @@ version = "0.5"
 features = ["headers", "http1", "json", "multipart", "tower-log"]
 
 [dependencies.axum-server]
-version = "0.3"
+version = "0.4.0"
 features = ["tls-rustls"]
 
 [dependencies.btfm-api-structs]
@@ -72,21 +76,18 @@ version = "1"
 
 [dependencies.serenity]
 version = "0.10"
-features=["cache", "framework", "gateway", "standard_framework", "http", "rustls_backend", "voice", "utils"]
+features = ["cache", "framework", "gateway", "standard_framework", "http", "rustls_backend", "voice", "utils"]
 
 [dependencies.songbird]
 version = "0.2.0"
 features=["default", "builtin-queue"]
 
 [dependencies.sqlx]
-version = "0.5"
-features=["runtime-tokio-rustls", "postgres", "chrono", "migrate", "macros", "uuid"]
+version = "0.6.0"
+features = ["runtime-tokio-rustls", "postgres", "chrono", "migrate", "macros", "uuid"]
 
 [dependencies.tempfile]
 version = "3"
-
-[dependencies.thesaurus]
-version = "0.2"
 
 [dependencies.tracing]
 version = "0.1"
@@ -116,7 +117,7 @@ version = "0.5"
 version = "0.4"
 
 [dependencies.tower-http]
-version = "0.2"
+version = "0.3.4"
 features = ["trace", "request-id", "util", "add-extension", "auth", "compression-full", "sensitive-headers"]
 
 [dependencies.url]
@@ -124,8 +125,5 @@ version = "2"
 features = ["serde"]
 
 [dependencies.ulid]
-version = "0.5"
+version = "0.6.0"
 features = ["serde", "uuid"]
-
-[dependencies.uuid]
-version = "0.8"
