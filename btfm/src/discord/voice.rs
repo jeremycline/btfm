@@ -19,7 +19,6 @@ use tokio::sync::mpsc;
 use tracing::{debug, error, info, trace, warn, Instrument};
 use ulid::Ulid;
 
-use super::text::HttpClient;
 use super::{BtfmData, User};
 use crate::db;
 
@@ -37,15 +36,21 @@ pub async fn hello_there(event_name: &str) -> Option<Input> {
 }
 
 pub struct Receiver {
-    client_data: Arc<RwLock<TypeMap>>,
-    locked_call: Arc<Mutex<Call>>,
+    btfm_data: Arc<Mutex<BtfmData>>,
+    http: Arc<CacheAndHttp>,
+    call: Arc<Mutex<Call>>,
 }
 
 impl Receiver {
-    pub fn new(client_data: Arc<RwLock<TypeMap>>, locked_call: Arc<Mutex<Call>>) -> Receiver {
+    pub fn new(
+        btfm_data: Arc<Mutex<BtfmData>>,
+        http: Arc<CacheAndHttp>,
+        call: Arc<Mutex<Call>>,
+    ) -> Receiver {
         Receiver {
-            client_data,
-            locked_call,
+            btfm_data,
+            http,
+            call,
         }
     }
 }
@@ -61,15 +66,13 @@ impl VoiceEventHandler for Receiver {
                 ..
             }) => {
                 debug!("Got speaking update ({:?}) for {:?}", speaking, user_id);
-                let locked_btfm_data = Arc::clone(&self.client_data)
-                    .read()
-                    .await
-                    .get::<BtfmData>()
-                    .cloned()
-                    .expect("Expected voice manager");
-                let mut btfm_data = locked_btfm_data.lock().await;
                 if let Some(user_id) = user_id {
-                    btfm_data.ssrc_map.entry(user_id.0).or_insert(*ssrc);
+                    self.btfm_data
+                        .lock()
+                        .await
+                        .ssrc_map
+                        .entry(user_id.0)
+                        .or_insert(*ssrc);
                 }
             }
 
@@ -77,20 +80,13 @@ impl VoiceEventHandler for Receiver {
                 let (ssrc, speaking) = (data.ssrc, data.speaking);
                 debug!("SSRC {:?} speaking state update to {:?}", ssrc, speaking);
                 if speaking {
-                    let locked_btfm_data = Arc::clone(&self.client_data)
-                        .read()
-                        .await
-                        .get::<BtfmData>()
-                        .cloned()
-                        .expect("Expected voice manager");
-
-                    let mut btfm_data = locked_btfm_data.lock().await;
+                    let mut btfm_data = self.btfm_data.lock().await;
                     if let Some(user) = btfm_data.users.get_mut(&ssrc) {
                         user.speaking = true;
                     }
                     drop(btfm_data);
 
-                    let call = self.locked_call.lock().await;
+                    let call = self.call.lock().await;
                     if let Some(track) = call.queue().current() {
                         if let Some(duration) = track.metadata().duration {
                             if duration > core::time::Duration::new(3, 0) {
@@ -103,21 +99,14 @@ impl VoiceEventHandler for Receiver {
                         }
                     }
                 } else {
-                    let locked_btfm_data = Arc::clone(&self.client_data)
-                        .read()
-                        .await
-                        .get::<BtfmData>()
-                        .cloned()
-                        .expect("Expected voice manager");
-
-                    let mut btfm_data = locked_btfm_data.lock().await;
+                    let mut btfm_data = self.btfm_data.lock().await;
                     if let Some(user) = btfm_data.users.get_mut(&ssrc) {
                         user.speaking = false;
                     }
 
                     // Bump the clip volume back up if no one is talking
                     if btfm_data.users.values().all(|user| !user.speaking) {
-                        let call = self.locked_call.lock().await;
+                        let call = self.call.lock().await;
                         if let Some(track) = call.queue().current() {
                             if let Err(e) = track.set_volume(1.0) {
                                 info!("Unable to boost volume playback: {}", e);
@@ -141,19 +130,7 @@ impl VoiceEventHandler for Receiver {
                     packet.ssrc,
                     packet.sequence.0,
                 );
-                let locked_btfm_data = Arc::clone(&self.client_data)
-                    .read()
-                    .await
-                    .get::<BtfmData>()
-                    .cloned()
-                    .expect("Expected voice manager");
-                let mut btfm_data = locked_btfm_data.lock().await;
-                let http_and_cache = Arc::clone(&self.client_data)
-                    .read()
-                    .await
-                    .get::<HttpClient>()
-                    .cloned()
-                    .expect("Expected HttpClient in TypeMap");
+                let mut btfm_data = self.btfm_data.lock().await;
 
                 let transcriber = &btfm_data.transcriber.clone();
                 let user = btfm_data.users.entry(packet.ssrc).or_insert_with(User::new);
@@ -166,11 +143,10 @@ impl VoiceEventHandler for Receiver {
                         info!(parent: &span, "Beginning new transcription stream");
                         let text_receiver =
                             transcriber.stream(audio_receiver).instrument(span).await;
-                        let locked_call = self.locked_call.clone();
                         tokio::task::spawn(handle_text(
-                            locked_btfm_data.clone(),
-                            http_and_cache,
-                            locked_call,
+                            self.btfm_data.clone(),
+                            self.http.clone(),
+                            self.call.clone(),
                             text_receiver,
                         ));
                         user.transcriber = Some(audio_sender);
@@ -191,13 +167,7 @@ impl VoiceEventHandler for Receiver {
 
             EventContext::ClientDisconnect(ClientDisconnect { user_id, .. }) => {
                 debug!("User ({}) disconnected", user_id);
-                let locked_btfm_data = Arc::clone(&self.client_data)
-                    .read()
-                    .await
-                    .get::<BtfmData>()
-                    .cloned()
-                    .expect("Expected voice manager");
-                let mut btfm_data = locked_btfm_data.lock().await;
+                let mut btfm_data = self.btfm_data.lock().await;
 
                 if let Some(ssrc) = btfm_data.ssrc_map.remove(&user_id.0) {
                     btfm_data.users.remove(&ssrc);

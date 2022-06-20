@@ -82,51 +82,70 @@ impl Handler {
             .expect("Songbird client missing")
             .clone();
 
-        let btfm_data_lock = context
+        let btfm_data = context
             .data
             .read()
             .await
             .get::<BtfmData>()
             .cloned()
             .expect("Expected BtfmData in TypeMap");
-        let mut btfm_data = btfm_data_lock.lock().await;
+        let mut btfm = btfm_data.lock().await;
 
-        if let Ok(channel) = context.http.get_channel(btfm_data.config.channel_id).await {
+        if let Ok(channel) = context.http.get_channel(btfm.config.channel_id).await {
             match channel.guild() {
                 Some(guild_channel) => {
                     if let Ok(members) = guild_channel.members(&context.cache).await {
                         if !members.iter().any(|m| !m.user.bot) {
-                            if let Err(e) = manager.remove(btfm_data.config.guild_id).await {
+                            if let Err(e) = manager.remove(btfm.config.guild_id).await {
                                 info!("Failed to remove guild? {:?}", e);
                             }
-                            btfm_data.user_history.clear();
-                        } else if manager.get(btfm_data.config.guild_id).is_none() {
-                            let (handler_lock, result) = manager
-                                .join(btfm_data.config.guild_id, btfm_data.config.channel_id)
+                            btfm.user_history.clear();
+                        } else if manager.get(btfm.config.guild_id).is_none() {
+                            let (call, result) = manager
+                                .join(btfm.config.guild_id, btfm.config.channel_id)
                                 .await;
                             if result.is_ok() {
                                 tokio::spawn(play_clip_at_interval(
-                                    Arc::clone(&handler_lock),
-                                    btfm_data.db.clone(),
+                                    Arc::clone(&call),
+                                    btfm.db.clone(),
                                 ));
 
-                                let mut handler = handler_lock.lock().await;
+                                let mut handler = call.lock().await;
+                                let http = context
+                                    .data
+                                    .read()
+                                    .await
+                                    .get::<HttpClient>()
+                                    .cloned()
+                                    .expect("Expected HTTP client");
                                 handler.add_global_event(
                                     CoreEvent::SpeakingUpdate.into(),
-                                    Receiver::new(context.data.clone(), handler_lock.clone()),
+                                    Receiver::new(
+                                        Arc::clone(&btfm_data),
+                                        Arc::clone(&http),
+                                        Arc::clone(&call),
+                                    ),
                                 );
                                 handler.add_global_event(
                                     CoreEvent::VoicePacket.into(),
-                                    Receiver::new(context.data.clone(), handler_lock.clone()),
+                                    Receiver::new(
+                                        Arc::clone(&btfm_data),
+                                        Arc::clone(&http),
+                                        Arc::clone(&call),
+                                    ),
                                 );
                                 handler.add_global_event(
                                     CoreEvent::ClientDisconnect.into(),
-                                    Receiver::new(context.data.clone(), handler_lock.clone()),
+                                    Receiver::new(
+                                        Arc::clone(&btfm_data),
+                                        Arc::clone(&http),
+                                        Arc::clone(&call),
+                                    ),
                                 );
                             } else {
                                 error!(
                                     "Unable to join {:?} on {:?}",
-                                    &btfm_data.config.guild_id, &btfm_data.config.channel_id
+                                    &btfm.config.guild_id, &btfm.config.channel_id
                                 );
                             }
                         }
@@ -135,14 +154,14 @@ impl Handler {
                 None => {
                     error!(
                         "{:?} is not a Guild channel and is not supported!",
-                        btfm_data.config.channel_id
+                        btfm.config.channel_id
                     );
                 }
             }
         } else {
             warn!(
                 "Unable to retrieve channel details for {:?}, ignoring voice state update.",
-                btfm_data.config.channel_id
+                btfm.config.channel_id
             );
         }
     }
