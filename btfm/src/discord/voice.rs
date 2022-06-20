@@ -211,8 +211,7 @@ async fn handle_text(
     let mut conn = btfm.db.acquire().await.unwrap();
     if !text.contains("excuse me")
         && rate_limit(
-            db::last_play_time(&mut conn).await,
-            current_time,
+            current_time - db::last_play_time(&mut conn).await,
             rate_adjuster,
             &mut rand::thread_rng(),
         )
@@ -270,12 +269,10 @@ async fn handle_text(
 ///
 /// true if a clip should not be played, or false if we should play a clip.
 fn rate_limit(
-    last_play: chrono::NaiveDateTime,
-    current_time: chrono::NaiveDateTime,
+    since_last_play: chrono::Duration,
     rate_adjuster: f64,
     rng: &mut dyn rand::RngCore,
 ) -> bool {
-    let since_last_play = current_time - last_play;
     debug!(
         "It's been {:?} since the last time a clip was played",
         since_last_play
