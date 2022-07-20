@@ -8,10 +8,6 @@ documentation = "https://docs.rs/btfm/"
 readme = "../README.md"
 repository = "https://github.com/jeremycline/btfm/"
 
-[dependencies]
-thesaurus= "0.3.1"
-uuid= "1.1.2"
-
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies.axum]
@@ -89,6 +85,9 @@ features = ["runtime-tokio-rustls", "postgres", "chrono", "migrate", "macros", "
 [dependencies.tempfile]
 version = "3"
 
+[dependencies.thesaurus]
+version = "0.3.1"
+
 [dependencies.tracing]
 version = "0.1"
 
@@ -127,3 +126,6 @@ features = ["serde"]
 [dependencies.ulid]
 version = "0.6.0"
 features = ["serde", "uuid"]
+
+[dependencies.uuid]
+version = "1.1.2"
