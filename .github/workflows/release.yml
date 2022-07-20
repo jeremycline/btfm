@@ -60,6 +60,9 @@ jobs:
           fi
           NEW_RELEASE="${{ github.event.inputs.crate }}"-v"$(grep "^version.=." "${{ github.event.inputs.crate }}"/Cargo.toml | awk '{gsub("\"", ""); print $3}')"
 
+          git config --global user.email "github-bot@jcline.org"
+          git config --global user.name "Automated Release"
+
           git add --all
           git commit -m "$NEW_RELEASE"
           printf "# %s\n\n" "$NEW_RELEASE" > changelog
