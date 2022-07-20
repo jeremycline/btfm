@@ -52,13 +52,15 @@ jobs:
         run: |
           set -x
 
-          CURRENT_RELEASE="${{ github.event.inputs.crate }}"-v"$(grep "^version.=." "${{ github.event.inputs.crate }}"/Cargo.toml | awk '{gsub("\"", ""); print $3}')"
+          PKG=${{ github.event.inputs.crate }}
+
+          CURRENT_RELEASE="$PKG"-v"$(head -5 "$PKG"/Cargo.toml | grep "^version.=." | awk '{gsub("\"", ""); print $3}')"
           if [ "${{ github.event.inputs.release_type }}" == "feature" ]; then
-            cargo set-version --bump minor
+            cargo set-version -p "$PKG"  --bump minor
           else
-            cargo set-version --bump patch
+            cargo set-version -p "$PKG" --bump patch
           fi
-          NEW_RELEASE="${{ github.event.inputs.crate }}"-v"$(grep "^version.=." "${{ github.event.inputs.crate }}"/Cargo.toml | awk '{gsub("\"", ""); print $3}')"
+          NEW_RELEASE="$PKG"-v"$(head -5 "$PKG"/Cargo.toml | grep "^version.=." | awk '{gsub("\"", ""); print $3}')"
 
           git config --global user.email "github-bot@jcline.org"
           git config --global user.name "Automated Release"
