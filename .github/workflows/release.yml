@@ -24,6 +24,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+        with:
+          # Pull all history and tags
+          fetch-depth: 0
 
       - name: Install latest stable Rust release
         uses: actions-rs/toolchain@v1
