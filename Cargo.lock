@@ -141,6 +141,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-tungstenite"
+version = "0.17.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a1b71b31561643aa8e7df3effe284fa83ab1a840e52294c5f4bd7bfd8b2becbb"
+dependencies = [
+ "futures-io",
+ "futures-util",
+ "log",
+ "pin-project-lite",
+ "tokio",
+ "tokio-rustls 0.23.4",
+ "tungstenite 0.17.3",
+ "webpki-roots 0.22.4",
+]
+
+[[package]]
 name = "atoi"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -331,7 +347,7 @@ dependencies = [
  "rand 0.8.5",
  "serde",
  "serde_json",
- "serenity",
+ "serenity 0.11.4",
  "songbird",
  "sqlx",
  "tempfile",
@@ -485,9 +501,9 @@ dependencies = [
 
 [[package]]
 name = "command_attr"
-version = "0.3.8"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e74a021f9d0b577821bf9f5b1a2be88677e95ee05713e5d44fb4236cfa1744c"
+checksum = "4d999d4e7731150ee14aee8f619c7a9aa9a4385bca0606c4fa95aa2f36a05d9a"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -581,6 +597,19 @@ checksum = "e77a43b28d0668df09411cb0bc9a8c2adc40f9a048afe863e05fd43251e8e39c"
 dependencies = [
  "cfg-if 1.0.0",
  "num_cpus",
+]
+
+[[package]]
+name = "dashmap"
+version = "5.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3495912c9c1ccf2e18976439f4443f3fee0fd61f424ff99fde6a66b15ecb448f"
+dependencies = [
+ "cfg-if 1.0.0",
+ "hashbrown",
+ "lock_api",
+ "parking_lot_core 0.9.3",
+ "serde",
 ]
 
 [[package]]
@@ -1180,6 +1209,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 
 [[package]]
+name = "levenshtein"
+version = "1.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "db13adb97ab515a3691f56e4dbab09283d0b86cb45abd991d8634a9d6f501760"
+
+[[package]]
 name = "libc"
 version = "0.2.126"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1479,6 +1514,15 @@ dependencies = [
  "libc",
  "pkg-config",
  "vcpkg",
+]
+
+[[package]]
+name = "ordered-float"
+version = "2.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7940cf2ca942593318d07fcf2596cdca60a85c9e7fab408a5e21a4f9dcd40d87"
+dependencies = [
+ "num-traits 0.2.15",
 ]
 
 [[package]]
@@ -1993,6 +2037,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde-value"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f3a1a3341211875ef120e117ea7fd5228530ae7e7036a779fdc9117be6b3282c"
+dependencies = [
+ "ordered-float",
+ "serde",
+]
+
+[[package]]
 name = "serde_derive"
 version = "1.0.140"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2049,14 +2103,46 @@ dependencies = [
  "bitflags",
  "bytes 1.2.0",
  "chrono",
- "command_attr",
  "flate2",
  "futures",
  "percent-encoding",
  "reqwest",
  "serde",
  "serde_json",
+ "tokio",
+ "tracing",
+ "typemap_rev",
+ "url",
+]
+
+[[package]]
+name = "serenity"
+version = "0.11.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d1a6cef5e72d4e5787c96413ec0a45f9317c59f0099e2ff2038b73cb352fefd"
+dependencies = [
+ "async-trait",
+ "async-tungstenite 0.17.2",
+ "base64 0.13.0",
+ "bitflags",
+ "bytes 1.2.0",
+ "cfg-if 1.0.0",
+ "chrono",
+ "command_attr",
+ "dashmap 5.3.4",
+ "flate2",
+ "futures",
+ "levenshtein",
+ "mime",
+ "mime_guess",
+ "parking_lot 0.12.1",
+ "percent-encoding",
+ "reqwest",
+ "serde",
+ "serde-value",
+ "serde_json",
  "static_assertions",
+ "time 0.3.11",
  "tokio",
  "tracing",
  "typemap_rev",
@@ -2165,7 +2251,7 @@ dependencies = [
  "async-tungstenite 0.14.0",
  "audiopus",
  "byteorder",
- "dashmap",
+ "dashmap 4.0.2",
  "discortp",
  "flume",
  "futures",
@@ -2174,7 +2260,7 @@ dependencies = [
  "rand 0.8.5",
  "serde",
  "serde_json",
- "serenity",
+ "serenity 0.10.10",
  "serenity-voice-model",
  "spin_sleep",
  "streamcatcher",
@@ -2486,8 +2572,10 @@ version = "0.3.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72c91f41dcb2f096c05f0873d667dceec1087ce5bcf984ec8ffb19acddbb3217"
 dependencies = [
+ "itoa",
  "libc",
  "num_threads",
+ "serde",
 ]
 
 [[package]]
@@ -2803,10 +2891,12 @@ dependencies = [
  "httparse",
  "log",
  "rand 0.8.5",
+ "rustls 0.20.6",
  "sha-1 0.10.0",
  "thiserror",
  "url",
  "utf-8",
+ "webpki 0.22.0",
 ]
 
 [[package]]

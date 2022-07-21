@@ -71,7 +71,7 @@ features = ["derive"]
 version = "1"
 
 [dependencies.serenity]
-version = "0.10"
+version = "0.11"
 features = ["cache", "framework", "gateway", "standard_framework", "http", "rustls_backend", "voice", "utils"]
 
 [dependencies.songbird]
