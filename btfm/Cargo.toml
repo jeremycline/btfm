@@ -1,6 +1,6 @@
 [package]
 name = "btfm"
-version = "0.17.2"
+version = "0.17.3"
 edition = "2021"
 description = "A Discord bot that plays audio clips based on voice chat"
 license = "GPL-2.0-or-later"
