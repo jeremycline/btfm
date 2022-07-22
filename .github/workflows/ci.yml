@@ -23,14 +23,41 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Download cached dependencies
+        uses: actions/cache@v2
+        id: deepspeech-cache
+        with:
+          path: ~/cache
+          key: ${{ runner.os }}
+
+      - name: Download deepspeech
+        if: steps.deepspeech-cache.outputs.cache-hit != 'true'
+        run: |
+          set -x
+          mkdir -p ~/cache
+          curl -L -o ~/cache/deepspeech.tar.xz \
+            "https://github.com/mozilla/DeepSpeech/releases/download/v0.9.3/native_client.amd64.cpu.linux.tar.xz"
+
+      - name: Install latest stable Rust release
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+
       - name: Install dependencies
         run: |
-          curl -sOL https://github.com/mozilla/DeepSpeech/releases/download/v0.9.3/native_client.amd64.cpu.linux.tar.xz
-          unxz native_client.amd64.cpu.linux.tar.xz
-          tar -xf native_client.amd64.cpu.linux.tar
+          mkdir deepspeech
+          pushd deepspeech
+          cp ~/cache/deepspeech.tar.xz .
+          unxz deepspeech.tar.xz
+          tar -xf deepspeech.tar
           sudo cp libdeepspeech.so /usr/local/lib/
           sudo ldconfig
+          popd
+          rm -rf deepspeech
+
           sudo apt update
           sudo apt install postgresql postgresql-contrib
           sudo systemctl restart postgresql.service
@@ -49,14 +76,18 @@ jobs:
   audit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
+      - uses: Swatinem/rust-cache@v2
+
       - name: Install latest stable release
         uses: actions-rs/toolchain@v1
         with:
             toolchain: stable
+
       - name: Install cargo-audit
         run: |
           cargo install cargo-audit
+
       - uses: actions-rs/cargo@v1
         with:
           command: audit
@@ -65,14 +96,41 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Download cached dependencies
+        uses: actions/cache@v2
+        id: deepspeech-cache
+        with:
+          path: ~/cache
+          key: ${{ runner.os }}
+
+      - name: Download deepspeech
+        if: steps.deepspeech-cache.outputs.cache-hit != 'true'
+        run: |
+          set -x
+          mkdir -p ~/cache
+          curl -L -o ~/cache/deepspeech.tar.xz \
+            "https://github.com/mozilla/DeepSpeech/releases/download/v0.9.3/native_client.amd64.cpu.linux.tar.xz"
+
+      - name: Install latest stable Rust release
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+
       - name: Install dependencies
         run: |
-          curl -sOL https://github.com/mozilla/DeepSpeech/releases/download/v0.9.3/native_client.amd64.cpu.linux.tar.xz
-          unxz native_client.amd64.cpu.linux.tar.xz
-          tar -xf native_client.amd64.cpu.linux.tar
+          mkdir deepspeech
+          pushd deepspeech
+          cp ~/cache/deepspeech.tar.xz .
+          unxz deepspeech.tar.xz
+          tar -xf deepspeech.tar
           sudo cp libdeepspeech.so /usr/local/lib/
           sudo ldconfig
+          popd
+          rm -rf deepspeech
+
           sudo apt update
           sudo apt install postgresql postgresql-contrib
           sudo systemctl restart postgresql.service
@@ -84,6 +142,7 @@ jobs:
           echo "DATABASE_URL=$DATABASE_URL" >> $GITHUB_ENV
           cargo install sqlx-cli
           cargo sqlx database setup --source btfm/migrations/
+
       - uses: actions-rs/cargo@v1
         with:
           command: clippy
@@ -93,14 +152,41 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Download cached dependencies
+        uses: actions/cache@v2
+        id: deepspeech-cache
+        with:
+          path: ~/cache
+          key: ${{ runner.os }}
+
+      - name: Download deepspeech
+        if: steps.deepspeech-cache.outputs.cache-hit != 'true'
+        run: |
+          set -x
+          mkdir -p ~/cache
+          curl -L -o ~/cache/deepspeech.tar.xz \
+            "https://github.com/mozilla/DeepSpeech/releases/download/v0.9.3/native_client.amd64.cpu.linux.tar.xz"
+
+      - name: Install latest stable Rust release
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+
       - name: Install dependencies
         run: |
-          curl -sOL https://github.com/mozilla/DeepSpeech/releases/download/v0.9.3/native_client.amd64.cpu.linux.tar.xz
-          unxz native_client.amd64.cpu.linux.tar.xz
-          tar -xf native_client.amd64.cpu.linux.tar
+          mkdir deepspeech
+          pushd deepspeech
+          cp ~/cache/deepspeech.tar.xz .
+          unxz deepspeech.tar.xz
+          tar -xf deepspeech.tar
           sudo cp libdeepspeech.so /usr/local/lib/
           sudo ldconfig
+          popd
+          rm -rf deepspeech
+
           sudo apt update
           sudo apt install postgresql postgresql-contrib
           sudo systemctl restart postgresql.service
@@ -112,6 +198,7 @@ jobs:
           echo "DATABASE_URL=$DATABASE_URL" >> $GITHUB_ENV
           cargo install sqlx-cli
           cargo sqlx database setup --source btfm/migrations/
+
       - uses: actions-rs/cargo@v1
         with:
           command: test

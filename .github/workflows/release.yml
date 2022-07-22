@@ -62,6 +62,7 @@ jobs:
           popd
           rm -rf deepspeech
 
+          sudo apt update
           sudo apt install postgresql postgresql-contrib
           sudo systemctl restart postgresql.service
           sudo -u postgres createuser btfm
@@ -90,14 +91,20 @@ jobs:
 
           git config --global user.email "github-bot@jcline.org"
           git config --global user.name "Automated Release"
-
+          git checkout -b release
           git add --all
           git commit -m "$NEW_RELEASE"
           printf "# %s\n\n" "$NEW_RELEASE" > changelog
           printf "# Changes since %s\n\n" "$CURRENT_RELEASE" >> changelog
           git diff --stat "$CURRENT_RELEASE".. >> changelog
           git tag --annotate --file changelog "$NEW_RELEASE"
-          git push origin main "$NEW_RELEASE"
+          git checkout main
+          git pull
+          git merge release
+          git push origin main
+          git push origin "$NEW_RELEASE"
+
+          echo "TAG=$NEW_RELEASE" >> $GITHUB_ENV
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
@@ -122,7 +129,7 @@ jobs:
           args: --document-private-items --no-deps
 
       - name: Bundle up the docs for Randy
-        run: tar cvzf btfm-docs.tar.gz target/doc
+        run: tar cvzf the-docs.tar.gz target/doc
 
       - name: Create release build
         uses: actions-rs/cargo@v1
