@@ -20,59 +20,6 @@ jobs:
           command: fmt
           args: -- --check -l
 
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: Swatinem/rust-cache@v2
-
-      - name: Download cached dependencies
-        uses: actions/cache@v2
-        id: deepspeech-cache
-        with:
-          path: ~/cache
-          key: ${{ runner.os }}
-
-      - name: Download deepspeech
-        if: steps.deepspeech-cache.outputs.cache-hit != 'true'
-        run: |
-          set -x
-          mkdir -p ~/cache
-          curl -L -o ~/cache/deepspeech.tar.xz \
-            "https://github.com/mozilla/DeepSpeech/releases/download/v0.9.3/native_client.amd64.cpu.linux.tar.xz"
-
-      - name: Install latest stable Rust release
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-
-      - name: Install dependencies
-        run: |
-          mkdir deepspeech
-          pushd deepspeech
-          cp ~/cache/deepspeech.tar.xz .
-          unxz deepspeech.tar.xz
-          tar -xf deepspeech.tar
-          sudo cp libdeepspeech.so /usr/local/lib/
-          sudo ldconfig
-          popd
-          rm -rf deepspeech
-
-          sudo apt update
-          sudo apt install postgresql postgresql-contrib
-          sudo systemctl restart postgresql.service
-          sudo -u postgres createuser btfm
-          sudo -u postgres createdb btfm
-          sudo -u postgres psql -c "ALTER USER btfm PASSWORD 'password';"
-          sudo -u postgres psql -c "ALTER DATABASE btfm OWNER to btfm;"
-          export DATABASE_URL=postgres://btfm:password@localhost/btfm
-          echo "DATABASE_URL=$DATABASE_URL" >> $GITHUB_ENV
-          cargo install sqlx-cli
-          cargo sqlx database setup --source btfm/migrations/
-      - uses: actions-rs/cargo@v1
-        with:
-          command: build
-
   audit:
     runs-on: ubuntu-latest
     steps:
@@ -92,9 +39,8 @@ jobs:
         with:
           command: audit
 
-  clippy:
+  test:
     runs-on: ubuntu-latest
-    needs: build
     steps:
       - uses: actions/checkout@v3
       - uses: Swatinem/rust-cache@v2
@@ -147,57 +93,6 @@ jobs:
         with:
           command: clippy
           args: --all-targets --all-features -- -D warnings
-
-  test:
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-      - uses: actions/checkout@v3
-      - uses: Swatinem/rust-cache@v2
-
-      - name: Download cached dependencies
-        uses: actions/cache@v2
-        id: deepspeech-cache
-        with:
-          path: ~/cache
-          key: ${{ runner.os }}
-
-      - name: Download deepspeech
-        if: steps.deepspeech-cache.outputs.cache-hit != 'true'
-        run: |
-          set -x
-          mkdir -p ~/cache
-          curl -L -o ~/cache/deepspeech.tar.xz \
-            "https://github.com/mozilla/DeepSpeech/releases/download/v0.9.3/native_client.amd64.cpu.linux.tar.xz"
-
-      - name: Install latest stable Rust release
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-
-      - name: Install dependencies
-        run: |
-          mkdir deepspeech
-          pushd deepspeech
-          cp ~/cache/deepspeech.tar.xz .
-          unxz deepspeech.tar.xz
-          tar -xf deepspeech.tar
-          sudo cp libdeepspeech.so /usr/local/lib/
-          sudo ldconfig
-          popd
-          rm -rf deepspeech
-
-          sudo apt update
-          sudo apt install postgresql postgresql-contrib
-          sudo systemctl restart postgresql.service
-          sudo -u postgres createuser btfm
-          sudo -u postgres createdb btfm
-          sudo -u postgres psql -c "ALTER USER btfm PASSWORD 'password';"
-          sudo -u postgres psql -c "ALTER DATABASE btfm OWNER to btfm;"
-          export DATABASE_URL=postgres://btfm:password@localhost/btfm
-          echo "DATABASE_URL=$DATABASE_URL" >> $GITHUB_ENV
-          cargo install sqlx-cli
-          cargo sqlx database setup --source btfm/migrations/
 
       - uses: actions-rs/cargo@v1
         with:

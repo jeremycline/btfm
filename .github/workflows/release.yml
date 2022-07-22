@@ -120,7 +120,8 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         uses: actions-rs/cargo@v1
         with:
-          command: publish -p ${{ github.event.inputs.crate }}
+          command: publish
+          args: -p ${{ github.event.inputs.crate }}
 
       - name: Create documentation
         uses: actions-rs/cargo@v1
