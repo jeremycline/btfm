@@ -1,6 +1,7 @@
 use std::{path::PathBuf, time::Duration};
 
 use btfm_api_structs::{Clip, ClipUpdated, ClipUpload, Clips, CreatePhrase, Phrase, Phrases};
+use chrono::SubsecRound;
 use clap::{Parser, Subcommand};
 use reqwest::{multipart, Body, Url};
 use thiserror::Error as ThisError;
@@ -192,7 +193,7 @@ async fn process_command(opts: Cli) -> Result<(), Error> {
                     .await
                     .map(|resp| resp.error_for_status())??;
                 let clips = response.json::<Clips>().await?;
-                println!("{}", serde_json::to_string_pretty(&clips)?);
+                display_clips(&clips);
                 Ok(())
             }
             ClipCommand::Edit {
@@ -250,4 +251,41 @@ async fn process_command(opts: Cli) -> Result<(), Error> {
             }
         },
     }
+}
+
+fn display_clips(clips: &Clips) {
+    let mut table = prettytable::Table::new();
+    table.add_row(prettytable::Row::new(vec![
+        prettytable::Cell::new("ID").with_style(prettytable::Attr::Bold),
+        prettytable::Cell::new("Created").with_style(prettytable::Attr::Bold),
+        prettytable::Cell::new("Last Played").with_style(prettytable::Attr::Bold),
+        prettytable::Cell::new("Plays").with_style(prettytable::Attr::Bold),
+        prettytable::Cell::new("Description").with_style(prettytable::Attr::Bold),
+        prettytable::Cell::new("Phrases").with_style(prettytable::Attr::Bold),
+    ]));
+    for clip in clips.clips.iter() {
+        table.add_row(prettytable::Row::new(vec![
+            prettytable::Cell::new(clip.ulid.to_string().as_str()),
+            prettytable::Cell::new(clip.created_on.trunc_subsecs(0).to_string().as_str()),
+            prettytable::Cell::new(clip.last_played.trunc_subsecs(0).to_string().as_str()),
+            prettytable::Cell::new(clip.plays.to_string().as_str()),
+            prettytable::Cell::new(
+                clip.description
+                    .chars()
+                    .take(64)
+                    .collect::<String>()
+                    .as_str(),
+            ),
+            prettytable::Cell::new(
+                clip.phrases
+                    .as_ref()
+                    .map(|p| p.items)
+                    .unwrap_or(0)
+                    .to_string()
+                    .as_str(),
+            ),
+        ]));
+    }
+
+    table.printstd();
 }

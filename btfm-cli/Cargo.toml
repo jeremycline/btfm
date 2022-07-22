@@ -27,6 +27,10 @@ features = ["serde"]
 version = "3.2"
 features = ["derive", "cargo", "env", "unicode", "wrap_help"]
 
+[dependencies.prettytable-rs]
+version = "0.8"
+features = ["win_crlf"]
+
 [dependencies.reqwest]
 version = "0.11"
 features = ["json", "multipart", "stream"]
