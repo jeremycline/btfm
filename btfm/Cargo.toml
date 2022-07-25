@@ -75,7 +75,7 @@ version = "0.10"
 features = ["cache", "framework", "gateway", "standard_framework", "http", "rustls_backend", "voice", "utils"]
 
 [dependencies.songbird]
-version = "0.2.0"
+version = "0.3.0"
 features=["default", "builtin-queue"]
 
 [dependencies.sqlx]
