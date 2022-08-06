@@ -80,7 +80,7 @@ features=["builtin-queue", "driver", "gateway", "serenity-rustls"]
 
 [dependencies.sqlx]
 version = "0.6.0"
-features = ["runtime-tokio-rustls", "postgres", "chrono", "migrate", "macros", "uuid"]
+features = ["runtime-tokio-rustls", "postgres", "chrono", "migrate", "macros", "offline", "uuid"]
 
 [dependencies.tempfile]
 version = "3"

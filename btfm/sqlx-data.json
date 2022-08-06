@@ -1,0 +1,361 @@
+{
+  "db": "PostgreSQL",
+  "3b1eb33d62121408754d2e3889480172171adec16fb2b62483aeee21f5a57e08": {
+    "describe": {
+      "columns": [
+        {
+          "name": "uuid",
+          "ordinal": 0,
+          "type_info": "Uuid"
+        },
+        {
+          "name": "clip",
+          "ordinal": 1,
+          "type_info": "Uuid"
+        },
+        {
+          "name": "phrase",
+          "ordinal": 2,
+          "type_info": "Text"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": []
+      }
+    },
+    "query": "\n        SELECT *\n        FROM clip_phrases;\n        "
+  },
+  "3ba8244926ddc3f268d1fc6dff34ebeab3291a062c7c77e60041f81b869c5360": {
+    "describe": {
+      "columns": [
+        {
+          "name": "uuid",
+          "ordinal": 0,
+          "type_info": "Uuid"
+        },
+        {
+          "name": "created_on",
+          "ordinal": 1,
+          "type_info": "Timestamp"
+        },
+        {
+          "name": "last_played",
+          "ordinal": 2,
+          "type_info": "Timestamp"
+        },
+        {
+          "name": "plays",
+          "ordinal": 3,
+          "type_info": "Int8"
+        },
+        {
+          "name": "phrase",
+          "ordinal": 4,
+          "type_info": "Text"
+        },
+        {
+          "name": "description",
+          "ordinal": 5,
+          "type_info": "Text"
+        },
+        {
+          "name": "audio_file",
+          "ordinal": 6,
+          "type_info": "Text"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Uuid",
+          "Text",
+          "Text",
+          "Text"
+        ]
+      }
+    },
+    "query": "\n            INSERT INTO clips (uuid, phrase, description, audio_file)\n            VALUES ($1, $2, $3, $4)\n            RETURNING uuid, created_on, last_played, plays, phrase, description, audio_file\n            "
+  },
+  "419de6567817f44b37f6ec7daa9fedd987a6e1ab9b5fa063ca85b430d0cb4dce": {
+    "describe": {
+      "columns": [
+        {
+          "name": "uuid",
+          "ordinal": 0,
+          "type_info": "Uuid"
+        },
+        {
+          "name": "created_on",
+          "ordinal": 1,
+          "type_info": "Timestamp"
+        },
+        {
+          "name": "last_played",
+          "ordinal": 2,
+          "type_info": "Timestamp"
+        },
+        {
+          "name": "plays",
+          "ordinal": 3,
+          "type_info": "Int8"
+        },
+        {
+          "name": "phrase",
+          "ordinal": 4,
+          "type_info": "Text"
+        },
+        {
+          "name": "description",
+          "ordinal": 5,
+          "type_info": "Text"
+        },
+        {
+          "name": "audio_file",
+          "ordinal": 6,
+          "type_info": "Text"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": []
+      }
+    },
+    "query": "\n        SELECT *\n        FROM clips;\n        "
+  },
+  "4ea3b215a1a523f22f2282313bdd3a4000061d3f01c45714266284689f406250": {
+    "describe": {
+      "columns": [
+        {
+          "name": "uuid",
+          "ordinal": 0,
+          "type_info": "Uuid"
+        },
+        {
+          "name": "clip",
+          "ordinal": 1,
+          "type_info": "Uuid"
+        },
+        {
+          "name": "phrase",
+          "ordinal": 2,
+          "type_info": "Text"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Uuid"
+        ]
+      }
+    },
+    "query": "\n            SELECT *\n            FROM clip_phrases\n            WHERE uuid = $1\n            "
+  },
+  "67e778e64fcc3f355b45c0ab570934ae886f7ffd00d779f33c5bf5fcdab42a7d": {
+    "describe": {
+      "columns": [
+        {
+          "name": "last_played",
+          "ordinal": 0,
+          "type_info": "Timestamp"
+        }
+      ],
+      "nullable": [
+        false
+      ],
+      "parameters": {
+        "Left": []
+      }
+    },
+    "query": "\n        SELECT last_played\n        FROM clips\n        ORDER BY last_played DESC\n        LIMIT 1"
+  },
+  "778f14919ea4300a24aad0517ee66c62db1634dde2b536dfd390c470a6086473": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Text",
+          "Uuid"
+        ]
+      }
+    },
+    "query": "\n        UPDATE clips\n        SET description = $1\n        WHERE uuid = $2\n        "
+  },
+  "7c992f6af95547dfd844cb8f487f3bba49698098d01500b84bd3dfaff385155c": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Uuid"
+        ]
+      }
+    },
+    "query": "\n            DELETE FROM clips\n            WHERE uuid = $1\n            "
+  },
+  "7db698f947f7a3c7cb14dbcb95d091796f01d466bd661fb0fd285069a11558fb": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Uuid",
+          "Uuid",
+          "Text"
+        ]
+      }
+    },
+    "query": "\n        INSERT INTO clip_phrases (uuid, clip, phrase)\n        VALUES ($1, $2, $3)\n        "
+  },
+  "a35078b74349661333bc8558d138338ba4e97b7608e7901ff4d3d6e8a18a7b84": {
+    "describe": {
+      "columns": [
+        {
+          "name": "uuid",
+          "ordinal": 0,
+          "type_info": "Uuid"
+        },
+        {
+          "name": "created_on",
+          "ordinal": 1,
+          "type_info": "Timestamp"
+        },
+        {
+          "name": "last_played",
+          "ordinal": 2,
+          "type_info": "Timestamp"
+        },
+        {
+          "name": "plays",
+          "ordinal": 3,
+          "type_info": "Int8"
+        },
+        {
+          "name": "phrase",
+          "ordinal": 4,
+          "type_info": "Text"
+        },
+        {
+          "name": "description",
+          "ordinal": 5,
+          "type_info": "Text"
+        },
+        {
+          "name": "audio_file",
+          "ordinal": 6,
+          "type_info": "Text"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Uuid"
+        ]
+      }
+    },
+    "query": "\n            SELECT *\n            FROM clips\n            WHERE clips.uuid = $1;\n        "
+  },
+  "d9234be1c798e677795507012cb3125dd4bf5f1e9e9de6735ed2c4dfe9366a0e": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Timestamp",
+          "Uuid"
+        ]
+      }
+    },
+    "query": "\n        UPDATE clips\n        SET plays = $1, last_played = $2\n        WHERE uuid = $3\n        "
+  },
+  "e34cfe8fd84db557291f2a357361daf9375867e180cee711d6d9698ffeea3da4": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Uuid"
+        ]
+      }
+    },
+    "query": "\n            DELETE FROM clip_phrases\n            WHERE uuid = $1\n            "
+  },
+  "ed9aabfa12aa815de63bc336abe7a2d61299263399401b8cbb04131a602e4b2b": {
+    "describe": {
+      "columns": [
+        {
+          "name": "uuid",
+          "ordinal": 0,
+          "type_info": "Uuid"
+        },
+        {
+          "name": "clip",
+          "ordinal": 1,
+          "type_info": "Uuid"
+        },
+        {
+          "name": "phrase",
+          "ordinal": 2,
+          "type_info": "Text"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Uuid"
+        ]
+      }
+    },
+    "query": "\n        SELECT *\n        FROM clip_phrases\n        WHERE clip = $1\n        "
+  },
+  "f7f66715bdb1cbd0df6073382b2a199fdcc3dce323a95157e1677c566434ad3a": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Uuid"
+        ]
+      }
+    },
+    "query": "\n        DELETE FROM clip_phrases\n        WHERE clip = $1\n        "
+  }
+}
