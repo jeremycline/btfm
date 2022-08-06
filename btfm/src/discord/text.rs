@@ -6,11 +6,7 @@ use rand::prelude::IteratorRandom;
 use serenity::{
     async_trait,
     client::{Context, EventHandler},
-    model::{
-        gateway::Ready,
-        id::{ChannelId, GuildId},
-        voice::VoiceState,
-    },
+    model::{gateway::Ready, id::ChannelId, voice::VoiceState},
     prelude::*,
 };
 use songbird::{Call, CoreEvent};
@@ -51,7 +47,7 @@ async fn play_clip_at_interval(call: Arc<Mutex<Call>>, db_pool: PgPool) {
                     {
                         info!("Playing a random clip to keep things spicy");
                         let mut handle = call.lock().await;
-                        handle.enqueue_source(source)
+                        handle.enqueue_source(source);
                     }
                 }
             }
@@ -174,17 +170,7 @@ impl EventHandler for Handler {
         self.manage_voice_channel(&context).await;
     }
 
-    async fn voice_state_update(
-        &self,
-        context: Context,
-        guild_id: Option<GuildId>,
-        old: Option<VoiceState>,
-        new: VoiceState,
-    ) {
-        if guild_id.is_none() {
-            return;
-        }
-
+    async fn voice_state_update(&self, context: Context, old: Option<VoiceState>, new: VoiceState) {
         debug!("voice_state_update: old={:?}  new={:?}", old, new);
         self.manage_voice_channel(&context).await;
 

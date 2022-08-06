@@ -71,12 +71,12 @@ features = ["derive"]
 version = "1"
 
 [dependencies.serenity]
-version = "0.10"
-features = ["cache", "framework", "gateway", "standard_framework", "http", "rustls_backend", "voice", "utils"]
+version = "0.11"
+features = ["builder", "cache", "client", "framework", "gateway", "http", "model", "standard_framework", "rustls_backend", "utils", "voice", "tokio_task_builder"]
 
 [dependencies.songbird]
-version = "0.2.0"
-features=["default", "builtin-queue"]
+version = "0.3"
+features=["builtin-queue", "driver", "gateway", "serenity-rustls"]
 
 [dependencies.sqlx]
 version = "0.6.0"

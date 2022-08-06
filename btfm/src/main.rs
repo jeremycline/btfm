@@ -58,7 +58,8 @@ async fn process_command(opts: cli::Btfm, db_pool: Pool<Postgres>) -> Result<(),
             let songbird = Songbird::serenity();
             songbird.set_config(songbird::Config::default().decode_mode(DecodeMode::Decode));
 
-            let mut client = Client::builder(&opts.config.discord_token)
+            let intents = GatewayIntents::non_privileged();
+            let mut client = Client::builder(&opts.config.discord_token, intents)
                 .event_handler(Handler)
                 .framework(framework)
                 .register_songbird_with(songbird)
