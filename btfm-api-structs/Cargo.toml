@@ -17,5 +17,5 @@ version = "1"
 features = ["derive"]
 
 [dependencies.ulid]
-version = "0.6.0"
+version = "1.0.0"
 features = ["serde"]
