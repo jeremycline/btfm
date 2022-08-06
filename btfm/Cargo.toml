@@ -86,7 +86,8 @@ features = ["runtime-tokio-rustls", "postgres", "chrono", "migrate", "macros", "
 version = "3"
 
 [dependencies.thesaurus]
-version = "0.3.1"
+version = "0.4.0"
+features = ["wordnet"]
 
 [dependencies.tracing]
 version = "0.1"
@@ -124,7 +125,7 @@ version = "2"
 features = ["serde"]
 
 [dependencies.ulid]
-version = "0.6.0"
+version = "1.0.0"
 features = ["serde", "uuid"]
 
 [dependencies.uuid]

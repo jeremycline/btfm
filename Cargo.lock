@@ -2483,12 +2483,22 @@ dependencies = [
 
 [[package]]
 name = "thesaurus"
-version = "0.3.1"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c0ee791b477da6ccb6dbfbece77f20be03c127da9c1d0ec6a3f84a6756e7bd06"
+checksum = "f32a7c11aded3e1cfdb6d7b520351ed4ef667ff93c043ab4f58856f5844edb91"
+dependencies = [
+ "thesaurus-wordnet",
+]
+
+[[package]]
+name = "thesaurus-wordnet"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0259c586ea967888ba2b555fbc56e68fdac32ad44d39b8dfcebd3afc3278a1a2"
 dependencies = [
  "lazy_static",
  "libflate",
+ "serde_json",
 ]
 
 [[package]]
@@ -2827,13 +2837,12 @@ checksum = "dcf81ac59edc17cc8697ff311e8f5ef2d99fcbd9817b34cec66f90b6c3dfd987"
 
 [[package]]
 name = "ulid"
-version = "0.6.0"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3be932d774bfad49722da2c4915ac7cc77b77dd223890739a0240de2b2a15957"
+checksum = "13a3aaa69b04e5b66cc27309710a569ea23593612387d67daaf102e73aa974fd"
 dependencies = [
  "rand",
  "serde",
- "time 0.3.12",
  "uuid 1.1.2",
 ]
 
