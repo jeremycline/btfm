@@ -83,6 +83,8 @@ jobs:
             cargo set-version -p btfm-cli --bump patch
             cargo set-version -p btfm-api-structs --bump patch
           fi
+          cargo check
+
           NEW_RELEASE=v"$(head -5 btfm/Cargo.toml | grep "^version.=." | awk '{gsub("\"", ""); print $3}')"
 
           git config --global user.email "github-bot@jcline.org"
@@ -111,12 +113,29 @@ jobs:
           tag_name: ${{ env.TAG }}
           generate_release_notes: true
 
-      - name: Publish to crates.io
+      - name: Publish the API structures to crates.io
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         uses: actions-rs/cargo@v1
         with:
           command: publish
+          args: -p btfm-api-structs
+
+      - name: Publish the CLI to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        uses: actions-rs/cargo@v1
+        with:
+          command: publish
+          args: -p btfm-cli
+
+      - name: Publish the service to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        uses: actions-rs/cargo@v1
+        with:
+          command: publish
+          args: -p btfm
 
       - name: Create documentation
         uses: actions-rs/cargo@v1
