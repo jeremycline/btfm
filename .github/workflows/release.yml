@@ -10,14 +10,6 @@ on:
           - feature
           - bugfix
         required: true
-      crate:
-        type: choice
-        description: which workspace member to release
-        options:
-          - btfm
-          - btfm-cli
-          - btfm-api-structs
-        required: true
 
 jobs:
   release:
@@ -79,15 +71,19 @@ jobs:
         run: |
           set -x
 
-          PKG=${{ github.event.inputs.crate }}
+          btfm=${{ github.event.inputs.crate }}
 
-          CURRENT_RELEASE="$PKG"-v"$(head -5 "$PKG"/Cargo.toml | grep "^version.=." | awk '{gsub("\"", ""); print $3}')"
+          CURRENT_RELEASE=v"$(head -5 btfm/Cargo.toml | grep "^version.=." | awk '{gsub("\"", ""); print $3}')"
           if [ "${{ github.event.inputs.release_type }}" == "feature" ]; then
-            cargo set-version -p "$PKG"  --bump minor
+            cargo set-version -p btfm --bump minor
+            cargo set-version -p btfm-cli --bump minor
+            cargo set-version -p btfm-api-structs --bump minor
           else
-            cargo set-version -p "$PKG" --bump patch
+            cargo set-version -p btfm --bump patch
+            cargo set-version -p btfm-cli --bump patch
+            cargo set-version -p btfm-api-structs --bump patch
           fi
-          NEW_RELEASE="$PKG"-v"$(head -5 "$PKG"/Cargo.toml | grep "^version.=." | awk '{gsub("\"", ""); print $3}')"
+          NEW_RELEASE=v"$(head -5 btfm/Cargo.toml | grep "^version.=." | awk '{gsub("\"", ""); print $3}')"
 
           git config --global user.email "github-bot@jcline.org"
           git config --global user.name "Automated Release"
@@ -121,7 +117,6 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: publish
-          args: -p ${{ github.event.inputs.crate }}
 
       - name: Create documentation
         uses: actions-rs/cargo@v1
@@ -142,5 +137,6 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            ./target/production/"${{ github.event.inputs.crate }}"
+            ./target/production/btfm
+            ./target/production/btfm-cli
             ./the-docs.tar.gz
