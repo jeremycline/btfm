@@ -1,6 +1,6 @@
 [package]
 name = "btfm"
-version = "0.18.0"
+version = "0.19.0"
 edition = "2021"
 description = "A Discord bot that plays audio clips based on voice chat"
 license = "GPL-2.0-or-later"
@@ -20,7 +20,7 @@ features = ["tls-rustls"]
 
 [dependencies.btfm-api-structs]
 path = "../btfm-api-structs"
-version = "0.2"
+version = "0.3"
 
 [dependencies.byteorder]
 version = "1"

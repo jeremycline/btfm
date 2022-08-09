@@ -1,6 +1,6 @@
 [package]
 name = "btfm-api-structs"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "Structures used in BTFM's HTTP API."
 license = "GPL-2.0-or-later"

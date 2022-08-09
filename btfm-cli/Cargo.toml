@@ -1,6 +1,6 @@
 [package]
 name = "btfm-cli"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
 description = "A command-line interface to manage the BTFM Discord bot."
 license = "GPL-2.0-or-later"
@@ -17,7 +17,7 @@ url = "2"
 
 [dependencies.btfm-api-structs]
 path = "../btfm-api-structs"
-version = "0.2"
+version = "0.3"
 
 [dependencies.chrono]
 version = "0.4"
