@@ -2483,9 +2483,9 @@ dependencies = [
 
 [[package]]
 name = "thesaurus"
-version = "0.4.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f32a7c11aded3e1cfdb6d7b520351ed4ef667ff93c043ab4f58856f5844edb91"
+checksum = "ecc580c0f0fc85f6944ee65555d17d9816a4469951a5cc29767a5e4b28064e2b"
 dependencies = [
  "thesaurus-wordnet",
 ]
