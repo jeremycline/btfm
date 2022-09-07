@@ -299,7 +299,7 @@ dependencies = [
 
 [[package]]
 name = "btfm"
-version = "0.19.0"
+version = "0.19.1"
 dependencies = [
  "axum",
  "axum-server",
@@ -340,7 +340,7 @@ dependencies = [
 
 [[package]]
 name = "btfm-api-structs"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "chrono",
  "serde",
@@ -349,7 +349,7 @@ dependencies = [
 
 [[package]]
 name = "btfm-cli"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "btfm-api-structs",
  "chrono",
