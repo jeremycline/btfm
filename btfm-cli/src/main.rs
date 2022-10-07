@@ -27,15 +27,15 @@ enum Error {
 ///
 /// This supports uploading, editing, and removing clips or trigger phrases.
 #[derive(clap::Parser, Debug)]
-#[clap(name = "btfm-cli")]
-#[clap(author = "Jeremy Cline <jeremy@jcline.org>")]
-#[clap(about = "Manage clips in the BTFM Discord bot", long_about = None)]
+#[command(name = "btfm-cli")]
+#[command(author = "Jeremy Cline <jeremy@jcline.org>")]
+#[command(about = "Manage clips in the BTFM Discord bot", long_about = None)]
 struct Cli {
-    #[clap(long, env = "BTFM_URL")]
+    #[arg(long, env = "BTFM_URL")]
     url: Url,
-    #[clap(long, short, env = "BTFM_USER")]
+    #[arg(long, short, env = "BTFM_USER")]
     user: String,
-    #[clap(long, short, env = "BTFM_PASSWORD")]
+    #[arg(long, short, env = "BTFM_PASSWORD")]
     password: String,
     #[clap(subcommand)]
     command: Command,
@@ -44,10 +44,10 @@ struct Cli {
 #[derive(Subcommand, Debug)]
 pub enum Command {
     /// Manage audio clips for the bot
-    #[clap(subcommand)]
+    #[command(subcommand)]
     Clip(ClipCommand),
     /// Manage phrases that trigger audio clips
-    #[clap(subcommand)]
+    #[command(subcommand)]
     Phrase(PhraseCommand),
 }
 
@@ -56,13 +56,13 @@ pub enum ClipCommand {
     /// Add a new clip to the database
     Add {
         /// A phrase to trigger the new clip
-        #[clap(short, long)]
+        #[arg(short, long)]
         phrases: Option<Vec<String>>,
         /// A short description of the audio clip
-        #[clap()]
+        #[arg()]
         description: String,
         /// The filename of the clip.
-        #[clap(parse(from_os_str))]
+        #[arg()]
         file: PathBuf,
     },
     /// Edit an existing clip in the database.
@@ -71,13 +71,13 @@ pub enum ClipCommand {
     /// each time you edit the clip.
     Edit {
         /// The clip ID (from "clip list")
-        #[clap()]
+        #[arg()]
         clip_id: Ulid,
         /// A short description of the audio clip
-        #[clap(short, long)]
+        #[arg(short, long)]
         description: Option<String>,
         /// The phrase or phrases that cause the clip to be played.
-        #[clap(short, long)]
+        #[arg(short, long)]
         phrases: Option<Vec<String>>,
     },
     /// List clips in the database

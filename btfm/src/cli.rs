@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-use clap::{ArgEnum, Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 
 use crate::config::{load_config, Config};
 
@@ -20,12 +20,12 @@ use crate::config::{load_config, Config};
 ///
 /// The configuration file is expected to be in TOML format.
 #[derive(Parser, Debug)]
-#[clap(author, version, about, long_about = None)]
+#[command(author, version, about, long_about = None)]
 pub struct Btfm {
     /// Path to the BTFM configuration file; see btfm.toml.example for details
-    #[clap(parse(try_from_str = load_config), env = "BTFM_CONFIG")]
+    #[arg(value_parser = load_config, env = "BTFM_CONFIG")]
     pub config: Config,
-    #[clap(subcommand)]
+    #[command(subcommand)]
     pub command: Command,
 }
 
@@ -36,15 +36,15 @@ pub enum Command {
     /// that don't exist, as well as files that don't belong to any clip.
     Tidy {
         /// Remove the dangling files and remove the clips without files from the database
-        #[clap(long)]
+        #[arg(long)]
         clean: bool,
     },
     /// Run the bot service
     Run {
-        #[clap(
+        #[arg(
             short,
             long,
-            arg_enum,
+            value_enum,
             ignore_case = true,
             default_value_t,
             env = "BTFM_BACKEND"
@@ -53,7 +53,7 @@ pub enum Command {
     },
 }
 
-#[derive(ArgEnum, Clone, Debug)]
+#[derive(ValueEnum, Clone, Debug)]
 pub enum Backend {
     DeepSpeech,
     Deepgram,
