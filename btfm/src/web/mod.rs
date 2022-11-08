@@ -1,7 +1,6 @@
 use axum::{
     body::BoxBody,
     extract::Extension,
-    handler::Handler,
     http::{Request, Response, StatusCode},
     response::IntoResponse,
     routing::get,
@@ -62,7 +61,7 @@ pub fn create_router(config: &HttpApi, db: PgPool) -> Router {
             "/v1/phrases/",
             get(handlers::phrase::get_all).post(handlers::phrase::create),
         )
-        .fallback(handle_404.into_service())
+        .fallback(handle_404)
         .layer(Extension(db));
 
     // Ordering matters here; requests pass through middleware top-to-bottom and responses bottom-to-top

@@ -72,13 +72,14 @@ pub async fn mark_played(
     clip: &mut Clip,
 ) -> Result<u64, crate::Error> {
     clip.plays += 1;
-    clip.last_played = chrono::NaiveDateTime::from_timestamp(
+    clip.last_played = chrono::NaiveDateTime::from_timestamp_opt(
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .expect("Check your system clock")
             .as_secs() as i64,
         0,
-    );
+    )
+    .unwrap();
     sqlx::query!(
         "
         UPDATE clips
@@ -121,7 +122,7 @@ pub async fn last_play_time(connection: &mut PgConnection) -> NaiveDateTime {
     .await;
     match clip_query {
         Ok(clip) => clip.last_played,
-        Err(_) => NaiveDateTime::from_timestamp(0, 0),
+        Err(_) => NaiveDateTime::from_timestamp_opt(0, 0).unwrap(),
     }
 }
 
@@ -286,7 +287,7 @@ where
     .execute(&mut *connection)
     .await
     .map(|update| update.rows_affected())?;
-    tracing::Span::current().record("clip_updated", &clip_updated);
+    tracing::Span::current().record("clip_updated", clip_updated);
 
     let phrases_deleted = sqlx::query!(
         "
@@ -298,12 +299,12 @@ where
     .execute(&mut *connection)
     .await
     .map(|deleted| deleted.rows_affected())?;
-    tracing::Span::current().record("phrases_deleted", &phrases_deleted);
+    tracing::Span::current().record("phrases_deleted", phrases_deleted);
 
     for phrase in phrases {
         super::add_phrase(connection, uuid, phrase.as_ref()).await?;
     }
-    tracing::Span::current().record("phrases_added", &phrases.len());
+    tracing::Span::current().record("phrases_added", phrases.len());
 
     Ok(())
 }

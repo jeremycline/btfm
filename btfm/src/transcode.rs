@@ -14,7 +14,7 @@ use tracing::{error, info, instrument};
 #[instrument]
 pub async fn file_to_wav(audio: &Path, target_sample: i32) -> Vec<i16> {
     let mut ffmpeg = Command::new("ffmpeg")
-        .args(&[
+        .args([
             "-i",
             audio.to_str().unwrap(),
             "-acodec",
@@ -93,7 +93,7 @@ pub async fn discord_to_wav(voice_data: Vec<i16>, target_sample: u32) -> Vec<i16
     // of silence to the beginning and end of the audio, which appears to help DeepSpeech
     // not clip the beginning of the transcription
     let mut ffmpeg = Command::new("ffmpeg")
-        .args(&[
+        .args([
             "-f",
             "s16le",
             "-ar",

@@ -199,13 +199,14 @@ async fn handle_text(
         return;
     }
 
-    let current_time = NaiveDateTime::from_timestamp(
+    let current_time = NaiveDateTime::from_timestamp_opt(
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("It's time to check your system clock")
             .as_secs() as i64,
         0,
-    );
+    )
+    .expect("Really, check your clock");
     let btfm = btfm_data.lock().await;
     let rate_adjuster = btfm.config.rate_adjuster;
     let mut conn = btfm.db.acquire().await.unwrap();

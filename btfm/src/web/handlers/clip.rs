@@ -1,5 +1,5 @@
 use axum::{
-    extract::{ContentLengthLimit, Extension, Multipart, Path},
+    extract::{Extension, Multipart, Path},
     Json,
 };
 use btfm_api_structs::{Clip, ClipUpdated, ClipUpload, Clips};
@@ -49,7 +49,7 @@ pub async fn get(
 #[instrument(skip(db_pool))]
 pub async fn create(
     Extension(db_pool): Extension<PgPool>,
-    ContentLengthLimit(mut form): ContentLengthLimit<Multipart, { 50 * 1024 * 1024 }>,
+    mut form: Multipart,
 ) -> Result<Json<Clip>, crate::Error> {
     let mut clip_metadata = None;
     let mut filename = None;
