@@ -11,11 +11,11 @@ repository = "https://github.com/jeremycline/btfm/"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies.axum]
-version = "0.6.0-rc.4"
+version = "0.6.1"
 features = ["headers", "http1", "json", "multipart", "tower-log"]
 
 [dependencies.axum-server]
-version = "0.4.0"
+version = "0.4.4"
 features = ["tls-rustls"]
 
 [dependencies.btfm-api-structs]
@@ -79,7 +79,7 @@ version = "0.3"
 features=["builtin-queue", "driver", "gateway", "serenity-rustls"]
 
 [dependencies.sqlx]
-version = "0.6.0"
+version = "0.6.2"
 features = ["runtime-tokio-rustls", "postgres", "chrono", "migrate", "macros", "offline", "uuid"]
 
 [dependencies.tempfile]
@@ -104,7 +104,7 @@ version = "1"
 features=["full"]
 
 [dependencies.tokio-tungstenite]
-version = "0.17"
+version = "0.18"
 features = ["rustls"]
 
 [dependencies.tokio-stream]
@@ -117,7 +117,7 @@ version = "0.5"
 version = "0.4"
 
 [dependencies.tower-http]
-version = "0.3.4"
+version = "0.3.5"
 features = ["trace", "request-id", "util", "add-extension", "auth", "compression-full", "sensitive-headers"]
 
 [dependencies.url]
@@ -129,4 +129,4 @@ version = "1.0.0"
 features = ["serde", "uuid"]
 
 [dependencies.uuid]
-version = "1.1.2"
+version = "1.2.2"
