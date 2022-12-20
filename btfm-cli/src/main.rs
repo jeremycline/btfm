@@ -82,12 +82,12 @@ pub enum ClipCommand {
     },
     /// List clips in the database
     List {},
-    // /// Remove clips from the database
-    // Remove {
-    //     /// The clip ID (from "clip list")
-    //     #[clap()]
-    //     clip_id: Ulid,
-    // },
+    /// Remove clips from the database
+    Remove {
+        /// The clip ID (from "clip list")
+        #[clap()]
+        clip_id: Ulid,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -215,6 +215,20 @@ async fn process_command(opts: Cli) -> Result<(), Error> {
                     .await
                     .map(|resp| resp.error_for_status())??;
                 let response = response.json::<ClipUpdated>().await?;
+                println!("{}", serde_json::to_string_pretty(&response)?);
+
+                Ok(())
+            }
+            ClipCommand::Remove { clip_id } => {
+                let endpoint = format!("/v1/clips/{}", clip_id);
+                let url = opts.url.join(&endpoint)?;
+                let response = client
+                    .delete(url)
+                    .basic_auth(opts.user, Some(opts.password))
+                    .send()
+                    .await
+                    .map(|resp| resp.error_for_status())??;
+                let response = response.json::<Clip>().await?;
                 println!("{}", serde_json::to_string_pretty(&response)?);
 
                 Ok(())
