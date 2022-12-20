@@ -2,7 +2,7 @@
 use sqlx::PgConnection;
 
 use crate::db;
-use btfm_api_structs::{Clip, Phrase, Phrases};
+use crate::web::api::{Clip, Phrase, Phrases};
 
 pub async fn load_phrases(
     clip: &mut Clip,

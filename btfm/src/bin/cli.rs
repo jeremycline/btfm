@@ -1,6 +1,6 @@
 use std::{path::PathBuf, time::Duration};
 
-use btfm_api_structs::{Clip, ClipUpdated, ClipUpload, Clips, CreatePhrase, Phrase, Phrases};
+use btfm::web::api::{Clip, ClipUpdated, ClipUpload, Clips, CreatePhrase, Phrase, Phrases};
 use chrono::SubsecRound;
 use clap::{Parser, Subcommand};
 use reqwest::{multipart, Body, Url};

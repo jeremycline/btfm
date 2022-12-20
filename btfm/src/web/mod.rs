@@ -23,6 +23,7 @@ use ulid::Ulid;
 
 use crate::{config::HttpApi, Error};
 
+pub mod api;
 pub(crate) mod handlers;
 pub(crate) mod serialization;
 

@@ -9,7 +9,7 @@ use ulid::Ulid;
 use crate::db;
 use crate::web::serialization::db_phrases_to_api;
 
-use btfm_api_structs::{CreatePhrase, Phrase, Phrases};
+use crate::web::api::{CreatePhrase, Phrase, Phrases};
 
 /// Show the phrase associated with a given Ulid.
 #[instrument(skip(db_pool))]

@@ -1,8 +1,8 @@
 /// Defines public-facing structures used in the web API
 use serde::{Deserialize, Serialize};
 
-mod clip;
-mod phrase;
+pub(crate) mod clip;
+pub(crate) mod phrase;
 
 pub use clip::{Clip, ClipUpdated, ClipUpload, Clips};
 pub use phrase::{CreatePhrase, Phrase, Phrases};

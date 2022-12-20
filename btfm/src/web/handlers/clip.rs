@@ -1,8 +1,8 @@
+use crate::web::api::{Clip, ClipUpdated, ClipUpload, Clips};
 use axum::{
     extract::{Extension, Multipart, Path},
     Json,
 };
-use btfm_api_structs::{Clip, ClipUpdated, ClipUpload, Clips};
 use sqlx::{types::Uuid, PgPool};
 use tracing::{info, instrument};
 use ulid::Ulid;
