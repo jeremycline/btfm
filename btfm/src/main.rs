@@ -53,6 +53,8 @@ async fn main() {
 async fn process_command(opts: cli::Btfm, db_pool: Pool<Postgres>) -> Result<(), Error> {
     match opts.command {
         cli::Command::Run { backend } => {
+            gstreamer::init()?;
+
             let framework = StandardFramework::new();
             // Configure Songbird to decode audio to signed 16 bit-per-same stereo PCM.
             let songbird = Songbird::serenity();

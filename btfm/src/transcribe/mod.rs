@@ -9,7 +9,7 @@ use crate::config::Config;
 use crate::Backend;
 
 mod deepgram;
-mod deepspeech;
+mod whisper;
 
 #[derive(Debug)]
 pub enum TranscriptionRequest {
@@ -39,12 +39,9 @@ impl Transcriber {
                 );
                 tokio::spawn(async move { worker.run().await });
             }
-            Backend::DeepSpeech => {
-                let mut worker = deepspeech::TranscriberWorker::new(
-                    receiver,
-                    config.deepspeech.model.clone(),
-                    config.deepspeech.scorer.clone(),
-                );
+            Backend::Whisper => {
+                let mut worker =
+                    whisper::TranscriberWorker::new(receiver, config.whisper.websocket_url.clone());
                 tokio::spawn(async move { worker.run().await });
             }
         }

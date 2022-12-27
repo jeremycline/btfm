@@ -27,7 +27,7 @@ pub struct Config {
     /// How much to rate limit the bot. The odds of playing are 1 - e^-(x/rate_adjuster).
     pub rate_adjuster: f64,
     /// DeepSpeech-specific configuration options
-    pub deepspeech: DeepSpeech,
+    pub whisper: Whisper,
     /// Deepgram-specific configuration options
     pub deepgram: Deepgram,
     /// The HTTP server configution options
@@ -37,21 +37,15 @@ pub struct Config {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct DeepSpeech {
-    /// Path to the DeepSpeech model (pbmm) file
-    pub model: PathBuf,
-    /// Path to the DeepSpeech scorer file
-    pub scorer: Option<PathBuf>,
-    /// Whether or not to use CUDA for DeepSpeech
-    pub gpu: bool,
+pub struct Whisper {
+    /// Path to the whisper-server endpoint; for example "ws://localhost:8000/v1/listen"
+    pub websocket_url: Url,
 }
 
-impl Default for DeepSpeech {
+impl Default for Whisper {
     fn default() -> Self {
-        DeepSpeech {
-            model: PathBuf::from(r"/var/lib/btfm/deepspeech.pbmm"),
-            scorer: Some(PathBuf::from(r"/var/lib/btfm/deepspeech.scorer")),
-            gpu: false,
+        Whisper {
+            websocket_url: Url::parse("ws://localhost:8000/v1/listen").expect("That's a valid URL"),
         }
     }
 }
@@ -109,8 +103,8 @@ impl Default for Config {
             log_channel_id: None,
             guild_id: 0,
             rate_adjuster: 120.0,
-            deepspeech: Default::default(),
             deepgram: Default::default(),
+            whisper: Default::default(),
             http_api: Default::default(),
             random_clip_interval: 60 * 15,
         }

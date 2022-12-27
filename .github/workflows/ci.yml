@@ -44,21 +44,12 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: Swatinem/rust-cache@v2
-
-      - name: Download cached dependencies
-        uses: actions/cache@v2
-        id: deepspeech-cache
+      - uses: actions/cache@v3
         with:
-          path: ~/cache
-          key: ${{ runner.os }}
-
-      - name: Download deepspeech
-        if: steps.deepspeech-cache.outputs.cache-hit != 'true'
-        run: |
-          set -x
-          mkdir -p ~/cache
-          curl -L -o ~/cache/deepspeech.tar.xz \
-            "https://github.com/mozilla/DeepSpeech/releases/download/v0.9.3/native_client.amd64.cpu.linux.tar.xz"
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
 
       - name: Install latest stable Rust release
         uses: actions-rs/toolchain@v1
@@ -67,17 +58,17 @@ jobs:
 
       - name: Install dependencies
         run: |
-          mkdir deepspeech
-          pushd deepspeech
-          cp ~/cache/deepspeech.tar.xz .
-          unxz deepspeech.tar.xz
-          tar -xf deepspeech.tar
-          sudo cp libdeepspeech.so /usr/local/lib/
-          sudo ldconfig
-          popd
-          rm -rf deepspeech
-
           sudo apt update
+          sudo apt install \
+            libgstreamer1.0-dev \
+            libgstreamer-plugins-base1.0-dev \
+            libgstreamer-plugins-bad1.0-dev \
+            gstreamer1.0-plugins-base \
+            gstreamer1.0-plugins-good \
+            gstreamer1.0-plugins-bad \
+            gstreamer1.0-plugins-ugly \
+            libunwind-dev
+          sudo apt install python3 ffmpeg
           sudo apt install postgresql postgresql-contrib
           sudo systemctl restart postgresql.service
           sudo -u postgres createuser btfm
@@ -88,6 +79,8 @@ jobs:
           echo "DATABASE_URL=$DATABASE_URL" >> $GITHUB_ENV
           cargo install sqlx-cli
           cargo sqlx database setup --source btfm/migrations/
+
+          pip install git+https://github.com/openai/whisper.git
 
       - uses: actions-rs/cargo@v1
         with:

@@ -1,8 +1,8 @@
 [package]
-name = "btfm"
-version = "0.19.1"
+name = "whisper-server"
+version = "0.1.0"
 edition = "2021"
-description = "A Discord bot that plays audio clips based on voice chat"
+description = "An HTTP server to handle STT via Whisper"
 license = "GPL-2.0-or-later"
 documentation = "https://docs.rs/btfm/"
 readme = "../README.md"
@@ -12,25 +12,15 @@ repository = "https://github.com/jeremycline/btfm/"
 
 [dependencies.axum]
 version = "0.6.1"
-features = ["headers", "http1", "json", "multipart", "tower-log"]
+features = ["headers", "http1", "json", "multipart", "tower-log", "ws"]
 
 [dependencies.axum-server]
 version = "0.4.4"
 features = ["tls-rustls"]
 
-[dependencies.btfm-api-structs]
-path = "../btfm-api-structs"
-version = "0.3"
-
-[dependencies.byteorder]
-version = "1"
-
 [dependencies.clap]
 version = "4"
 features = ["derive", "cargo", "env", "unicode", "wrap_help"]
-
-[dependencies.chrono]
-version = "0.4"
 
 [dependencies.futures]
 version = "0.3"
@@ -40,22 +30,6 @@ version = "0.3"
 
 [dependencies.futures-util]
 version = "0.3"
-
-[dependencies.gstreamer]
-version = "0.19"
-features = ["v1_20"]
-
-[dependencies.gstreamer-app]
-version = "0.19"
-features = ["v1_20"]
-
-[dependencies.gstreamer-audio]
-version = "0.19"
-features = ["v1_20"]
-
-[dependencies.hound]
-version = "3"
-
 [dependencies.http]
 version = "0.2"
 
@@ -66,11 +40,12 @@ version = "1"
 version = "0.14"
 features=["full"]
 
-[dependencies.once_cell]
-version = "1"
+[dependencies.numpy]
+version = "0.17"
 
-[dependencies.rand]
-version = "0.8"
+[dependencies.pyo3]
+version = "0.17.3"
+features = ["anyhow", "auto-initialize", "hashbrown", "serde"]
 
 [dependencies.serde]
 version = "1"
@@ -79,24 +54,8 @@ features = ["derive"]
 [dependencies.serde_json]
 version = "1"
 
-[dependencies.serenity]
-version = "0.11"
-features = ["builder", "cache", "client", "framework", "gateway", "http", "model", "standard_framework", "rustls_backend", "utils", "voice", "tokio_task_builder"]
-
-[dependencies.songbird]
-version = "0.3"
-features=["builtin-queue", "driver", "gateway", "serenity-rustls"]
-
-[dependencies.sqlx]
-version = "0.6.2"
-features = ["runtime-tokio-rustls", "postgres", "chrono", "migrate", "macros", "offline", "uuid"]
-
 [dependencies.tempfile]
 version = "3"
-
-[dependencies.thesaurus]
-version = "0.5.2"
-features = ["wordnet"]
 
 [dependencies.tracing]
 version = "0.1"
@@ -119,6 +78,10 @@ features = ["rustls"]
 [dependencies.tokio-stream]
 version = "0.1"
 
+[dependencies.tokio-util]
+version = "0.7"
+features = ["codec"]
+
 [dependencies.toml]
 version = "0.5"
 
@@ -132,10 +95,3 @@ features = ["trace", "request-id", "util", "add-extension", "auth", "compression
 [dependencies.url]
 version = "2"
 features = ["serde"]
-
-[dependencies.ulid]
-version = "1.0.0"
-features = ["serde", "uuid"]
-
-[dependencies.uuid]
-version = "1.2.2"
