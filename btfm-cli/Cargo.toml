@@ -28,7 +28,7 @@ version = "4"
 features = ["derive", "cargo", "env", "unicode", "wrap_help"]
 
 [dependencies.prettytable-rs]
-version = "0.9"
+version = "0.10"
 features = ["win_crlf"]
 
 [dependencies.reqwest]
