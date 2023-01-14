@@ -299,6 +299,7 @@ version = "0.19.1"
 dependencies = [
  "axum",
  "axum-server",
+ "btfm-api-structs",
  "byteorder",
  "chrono",
  "clap",
@@ -311,9 +312,7 @@ dependencies = [
  "httparse",
  "hyper",
  "once_cell",
- "prettytable-rs",
  "rand",
- "reqwest",
  "serde",
  "serde_json",
  "serenity",
@@ -325,7 +324,6 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tokio-tungstenite",
- "tokio-util",
  "toml",
  "tower",
  "tower-http",
@@ -334,6 +332,34 @@ dependencies = [
  "ulid",
  "url",
  "uuid 1.2.2",
+]
+
+[[package]]
+name = "btfm-api-structs"
+version = "0.3.1"
+dependencies = [
+ "chrono",
+ "serde",
+ "ulid",
+]
+
+[[package]]
+name = "btfm-cli"
+version = "0.5.1"
+dependencies = [
+ "btfm-api-structs",
+ "chrono",
+ "clap",
+ "futures",
+ "prettytable-rs",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "ulid",
+ "url",
 ]
 
 [[package]]

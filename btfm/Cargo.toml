@@ -18,6 +18,10 @@ features = ["headers", "http1", "json", "multipart", "tower-log"]
 version = "0.4.4"
 features = ["tls-rustls"]
 
+[dependencies.btfm-api-structs]
+path = "../btfm-api-structs"
+version = "0.3"
+
 [dependencies.byteorder]
 version = "1"
 
@@ -56,16 +60,8 @@ features=["full"]
 [dependencies.once_cell]
 version = "1"
 
-[dependencies.prettytable-rs]
-version = "0.9"
-features = ["win_crlf"]
-
 [dependencies.rand]
 version = "0.8"
-
-[dependencies.reqwest]
-version = "0.11"
-features = ["json", "multipart", "stream"]
 
 [dependencies.serde]
 version = "1"
@@ -114,10 +110,6 @@ features = ["rustls"]
 [dependencies.tokio-stream]
 version = "0.1"
 
-[dependencies.tokio-util]
-version = "0.7"
-features = ["codec"]
-
 [dependencies.toml]
 version = "0.5"
 
@@ -138,12 +130,3 @@ features = ["serde", "uuid"]
 
 [dependencies.uuid]
 version = "1.2.2"
-
-
-[[ bin ]]
-name = "btfm"
-path = "src/bin/cli.rs"
-
-[[ bin ]]
-name ="btfm-server"
-path = "src/bin/server.rs"

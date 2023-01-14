@@ -31,18 +31,6 @@ pub enum Error {
     BadRequest,
 }
 
-#[derive(clap::ValueEnum, Clone, Debug)]
-pub enum Backend {
-    DeepSpeech,
-    Deepgram,
-}
-
-impl Default for Backend {
-    fn default() -> Self {
-        Backend::DeepSpeech
-    }
-}
-
 /// Serializer for UUIDs
 pub fn uuid_serializer<S>(uuid: &Uuid, s: S) -> Result<S::Ok, S::Error>
 where
@@ -51,9 +39,12 @@ where
     s.serialize_str(&uuid.to_string())
 }
 
+pub mod cli;
 pub mod config;
 pub mod db;
 pub mod discord;
 pub mod transcode;
 pub mod transcribe;
 pub mod web;
+
+use cli::Backend;

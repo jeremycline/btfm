@@ -1,6 +1,7 @@
 use std::fs;
 
-use crate::web::api::{Clip as ApiClip, ClipUpload};
+use btfm_api_structs::Clip as ApiClip;
+use btfm_api_structs::ClipUpload;
 use chrono::NaiveDateTime;
 use rand::{distributions::Alphanumeric, prelude::*};
 use sqlx::{types::Uuid, PgConnection};

@@ -1,7 +1,7 @@
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 
-use super::Phrases;
+use crate::Phrases;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Clip {

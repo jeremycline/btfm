@@ -2,7 +2,7 @@ use axum::{extract::Extension, Json};
 use hyper::StatusCode;
 use sqlx::PgPool;
 
-use crate::web::api::Status;
+use btfm_api_structs::Status;
 use tracing::{error, instrument};
 
 /// Reports on the health of the web server.
