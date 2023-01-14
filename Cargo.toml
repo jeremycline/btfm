@@ -4,6 +4,7 @@ members = [
 	"btfm",
 	"btfm-cli",
 	"btfm-api-structs",
+	"whisper-server",
 ]
 
 [profile.production]

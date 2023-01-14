@@ -49,18 +49,18 @@ pub enum Command {
             default_value_t,
             env = "BTFM_BACKEND"
         )]
-        backend: Backend,
+        backend: crate::Backend,
     },
 }
 
 #[derive(ValueEnum, Clone, Debug)]
 pub enum Backend {
-    DeepSpeech,
     Deepgram,
+    Whisper,
 }
 
 impl Default for Backend {
     fn default() -> Self {
-        Backend::DeepSpeech
+        Backend::Whisper
     }
 }

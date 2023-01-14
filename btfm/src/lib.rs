@@ -13,6 +13,8 @@ pub enum Error {
     Database(#[from] sqlx::Error),
     #[error("Transcriber failed to respond to request")]
     TranscriberGone,
+    #[error("A transcoding error occurred in GStreamer")]
+    Trancode(#[from] gstreamer::glib::Error),
     #[error("Configuration file could not be read: {0}")]
     ConfigReadError(#[from] std::io::Error),
     #[error("Configuration file could not be parsed: {0}")]

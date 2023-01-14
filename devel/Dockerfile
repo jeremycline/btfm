@@ -1,6 +1,6 @@
-FROM registry.fedoraproject.org/fedora:32
+FROM registry.fedoraproject.org/fedora:37
 
-RUN dnf install -y https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-32.noarch.rpm
+RUN dnf install -y https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-37.noarch.rpm
 RUN dnf install -y \
 	autoconf \
 	cargo \
@@ -14,11 +14,15 @@ RUN dnf install -y \
 	openssl-devel \
 	opus-devel \
 	rustfmt \
-	sqlite-devel \
-	xz
+	clang \
+	glib2-devel \
+	gcc-g++ \
+	libstdc++-devel \
+	gstreamer1-devel \
+	gstreamer1-plugins-base-devel
 
-RUN mkdir /root/deep_speech
-RUN curl -L https://github.com/mozilla/DeepSpeech/releases/download/v0.7.0/native_client.amd64.cpu.linux.tar.xz -o /root/deep_speech/deep_speech.tar.xz
+RUN mkdir /root/whisper
+RUN curl -L https://github.com/mozilla/DeepSpeech/releases/download/v0.7.0/native_client.amd64.cpu.linux.tar.xz -o /root/whisper/
 RUN cd /root/deep_speech && tar xvf deep_speech.tar.xz
 RUN mv /root/deep_speech/libdeepspeech.so /usr/lib64/
 
