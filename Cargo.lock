@@ -1088,9 +1088,9 @@ dependencies = [
 
 [[package]]
 name = "gstreamer"
-version = "0.19.5"
+version = "0.19.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "238e5f8624f9256985505232c7499aa7927198ace20ec100990af00b5c5008c8"
+checksum = "bced31233fbef58c0bde8f4a3be86f0414869ce11b003b7dad90cb63ccb7e091"
 dependencies = [
  "bitflags",
  "cfg-if",
