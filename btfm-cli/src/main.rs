@@ -134,7 +134,7 @@ async fn main() {
     let opts = Cli::parse();
     match process_command(opts).await {
         Ok(_) => {}
-        Err(e) => eprintln!("Error: {}", e),
+        Err(e) => eprintln!("Error: {e}"),
     };
 }
 
@@ -201,7 +201,7 @@ async fn process_command(opts: Cli) -> Result<(), Error> {
                 description,
                 phrases,
             } => {
-                let endpoint = format!("/v1/clips/{}", clip_id);
+                let endpoint = format!("/v1/clips/{clip_id}");
                 let url = opts.url.join(&endpoint)?;
                 let json = ClipUpload {
                     description: description.unwrap_or_default(),
@@ -220,7 +220,7 @@ async fn process_command(opts: Cli) -> Result<(), Error> {
                 Ok(())
             }
             ClipCommand::Remove { clip_id } => {
-                let endpoint = format!("/v1/clips/{}", clip_id);
+                let endpoint = format!("/v1/clips/{clip_id}");
                 let url = opts.url.join(&endpoint)?;
                 let response = client
                     .delete(url)

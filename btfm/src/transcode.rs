@@ -250,7 +250,7 @@ pub(crate) async fn whisper_transcode(data: Vec<u8>) -> Vec<u8> {
                     break;
                 }
                 gstreamer::MessageView::Error(e) => {
-                    panic!("Transcoding failed: {:?}", e);
+                    panic!("Transcoding failed: {e:?}");
                 }
                 event => tracing::debug!("GStreamer event: {:?}", event),
             }
@@ -261,12 +261,11 @@ pub(crate) async fn whisper_transcode(data: Vec<u8>) -> Vec<u8> {
         let mut transcoded_data = vec![];
         let mut stream = appsink.stream();
         while let Some(sample) = stream.next().await {
-            tracing::info!("Got a sample");
+            tracing::trace!("Got a sample");
             let buffer_map = sample
                 .buffer()
                 .and_then(|buf| buf.map_readable().ok())
                 .unwrap();
-            // let data = unsafe { buffer_map.as_slice().align_to::<f32>().1 };
             transcoded_data.extend_from_slice(buffer_map.as_slice());
         }
 

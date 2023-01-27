@@ -46,7 +46,7 @@ async fn main() {
 
     match process_command(opts, db_pool).await {
         Ok(_) => {}
-        Err(e) => eprintln!("Error: {}", e),
+        Err(e) => eprintln!("Error: {e}"),
     }
 }
 
@@ -114,7 +114,7 @@ async fn process_command(opts: cli::Btfm, db_pool: Pool<Postgres>) -> Result<(),
             for clip in clips.iter() {
                 let file = opts.config.data_directory.join(&clip.audio_file);
                 if !file.exists() {
-                    println!("{}", clip);
+                    println!("{clip}");
                     if clean {
                         db::remove_clip(&mut conn, clip.uuid).await?;
                     }
@@ -131,10 +131,10 @@ async fn process_command(opts: cli::Btfm, db_pool: Pool<Postgres>) -> Result<(),
                 if !clip_names.iter().any(|p| p == &file_namish) {
                     let file_path = file.path();
                     if let Some(p) = file_path.to_str() {
-                        println!("{}", p);
+                        println!("{p}");
                         if clean {
                             if let Err(e) = tokio::fs::remove_file(file.path()).await {
-                                println!("Failed to remove file: {}", e)
+                                println!("Failed to remove file: {e}")
                             }
                         }
                     }
