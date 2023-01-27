@@ -25,12 +25,18 @@ pub enum Error {
     BackendParseError,
     #[error("The Discord client encountered an error: {0}")]
     Serenity(#[from] serenity::Error),
+    #[error("Unable to generate voice Input: {0}")]
+    SongbirdInput(#[from] songbird::input::error::Error),
     #[error("HTTP server encountered an error: {0}")]
     Server(std::io::Error),
     #[error("Tokio task failed: {0}")]
     TokioTask(#[from] tokio::task::JoinError),
     #[error("Client request is invalid")]
     BadRequest,
+    #[error("An HTTP error occurred")]
+    Http(#[from] reqwest::Error),
+    #[error("A Url parsing error occurred")]
+    ParseUrl(#[from] url::ParseError),
 }
 
 /// Serializer for UUIDs
@@ -45,6 +51,7 @@ pub mod cli;
 pub mod config;
 pub mod db;
 pub mod discord;
+pub(crate) mod mimic;
 pub mod transcode;
 pub mod transcribe;
 pub mod web;

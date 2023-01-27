@@ -34,6 +34,8 @@ pub struct Config {
     pub http_api: HttpApi,
     /// The time between random clip plays, in seconds.
     pub random_clip_interval: u64,
+
+    pub mimic_endpoint: Option<Url>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -107,6 +109,7 @@ impl Default for Config {
             whisper: Default::default(),
             http_api: Default::default(),
             random_clip_interval: 60 * 15,
+            mimic_endpoint: None,
         }
     }
 }

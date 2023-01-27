@@ -246,7 +246,7 @@ pub(crate) async fn whisper_transcode(data: Vec<u8>) -> Vec<u8> {
         while let Some(message) = bus.next().await {
             match message.view() {
                 gstreamer::MessageView::Eos(_) => {
-                    tracing::info!("End of data stream received");
+                    tracing::debug!("End of data stream received");
                     break;
                 }
                 gstreamer::MessageView::Error(e) => {
@@ -261,7 +261,6 @@ pub(crate) async fn whisper_transcode(data: Vec<u8>) -> Vec<u8> {
         let mut transcoded_data = vec![];
         let mut stream = appsink.stream();
         while let Some(sample) = stream.next().await {
-            tracing::trace!("Got a sample");
             let buffer_map = sample
                 .buffer()
                 .and_then(|buf| buf.map_readable().ok())

@@ -195,7 +195,7 @@ async fn handle_text(
     }
     let text = snippets.join(" ");
     if text.trim().is_empty() {
-        info!("It didn't sound like anything to the bot");
+        debug!("It didn't sound like anything to the bot");
         return;
     }
 
@@ -207,7 +207,42 @@ async fn handle_text(
         0,
     )
     .expect("Really, check your clock");
-    let btfm = btfm_data.lock().await;
+    let mut btfm = btfm_data.lock().await;
+
+    if text.contains("status report")
+        || text.contains("freeze all motor functions")
+        || text.contains("bot why did you say that")
+        || text.contains("all together")
+        || text.contains("altogether")
+    {
+        if let Some(endpoint) = btfm.config.mimic_endpoint.clone() {
+            let cache_dir = btfm.config.data_directory.join("tts_cache/");
+            if let Ok(voices) = crate::mimic::voices(&btfm.http_client, endpoint.clone()).await {
+                let voice = voices.into_iter().choose(&mut rand::thread_rng());
+                if let Some(voice) = voice {
+                    let mut body = btfm
+                        .status_report
+                        .clone()
+                        .unwrap_or_else(|| "It doesn't look like anything to me.".to_string());
+                    if text.contains("all together") || text.contains("altogether") {
+                        body = text.replace("all together", "");
+                        body = body.replace("altogether", "");
+                    }
+                    match crate::mimic::tts(&cache_dir, &btfm.http_client, endpoint, body, voice)
+                        .await
+                    {
+                        Ok(input) => {
+                            let _ = call.lock().await.enqueue_source(input);
+                        }
+                        Err(err) => tracing::error!(err = %err, "Failed to create TTS audio"),
+                    }
+                } else {
+                    tracing::error!("The mimic server didn't return any voices");
+                }
+            }
+        }
+    }
+
     let rate_adjuster = btfm.config.rate_adjuster;
     let mut conn = btfm.db.acquire().await.unwrap();
     if !text.contains("excuse me")
@@ -238,6 +273,10 @@ async fn handle_text(
             ```{}``` was randomly selected. Phrases that would trigger this clip: {}",
             clip_count, &clip, phrases
         );
+        btfm.status_report = Some(format!(
+            "The last clip that was played, described as \"{}\", is triggered by the phrases {}.",
+            clip.description, phrases
+        ));
         log_event_to_channel(
             btfm.config.log_channel_id.map(ChannelId),
             &http_client.http,
