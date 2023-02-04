@@ -120,7 +120,7 @@ features = ["rustls"]
 version = "0.1"
 
 [dependencies.toml]
-version = "0.5"
+version = "0.7"
 
 [dependencies.tower]
 version = "0.4"
