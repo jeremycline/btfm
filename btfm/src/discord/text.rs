@@ -93,7 +93,7 @@ impl Handler {
                     if let Ok(members) = guild_channel.members(&context.cache).await {
                         if !members.iter().any(|m| !m.user.bot) {
                             if let Err(e) = manager.remove(btfm.config.guild_id).await {
-                                info!("Failed to remove guild? {:?}", e);
+                                tracing::trace!("Failed to remove guild? {:?}", e);
                             }
                             btfm.user_history.clear();
                         } else if manager.get(btfm.config.guild_id).is_none() {
