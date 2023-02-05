@@ -21,6 +21,8 @@ use tower_http::{
 };
 use tracing::{instrument, Instrument, Level};
 
+mod error;
+
 const WHISPER: &str = include_str!("transcribe.py");
 
 #[derive(Parser, Debug)]
@@ -49,14 +51,20 @@ async fn main() {
     let router = router(Arc::new(AppState { transcriber: tx }));
     let service = router.into_make_service();
     tracing::info!("Listening on {:?}", &opts.listen_address);
-    axum::Server::bind(&opts.listen_address)
+    match axum::Server::bind(&opts.listen_address)
         .serve(service)
         .with_graceful_shutdown(shutdown_handler(transcriber))
         .await
-        .unwrap();
+    {
+        Ok(_) => {}
+        Err(err) => {
+            tracing::error!(err = ?err, "Server failed to shut down gracefully");
+            std::process::exit(1);
+        }
+    };
 }
 
-async fn shutdown_handler(transcriber: tokio::task::JoinHandle<()>) {
+async fn shutdown_handler(transcriber: tokio::task::JoinHandle<Result<(), error::Error>>) {
     let _shutdown_signal = tokio::signal::ctrl_c().await;
     tracing::info!("Shutdown signal received; beginning shutdown");
     transcriber.abort();
@@ -65,14 +73,14 @@ async fn shutdown_handler(transcriber: tokio::task::JoinHandle<()>) {
 fn transcribe(
     model: PathBuf,
     mut audio_receiver: mpsc::Receiver<(PathBuf, oneshot::Sender<String>)>,
-) {
+) -> Result<(), error::Error> {
     Python::with_gil(|py| {
-        let module = PyModule::from_code(py, WHISPER, "transcribe.py", "transcribe").unwrap();
+        let module = PyModule::from_code(py, WHISPER, "transcribe.py", "transcribe")?;
 
-        let load_model = module.getattr("load_model").unwrap();
-        load_model.call1((model,)).unwrap();
+        let load_model = module.getattr("load_model")?;
+        load_model.call1((model,))?;
 
-        let transcriber = module.getattr("transcribe").unwrap();
+        let transcriber = module.getattr("transcribe")?;
 
         while let Some((audio, sender)) = audio_receiver.blocking_recv() {
             let result = transcriber
@@ -83,7 +91,9 @@ fn transcribe(
                 tracing::error!("Failed to send STT result to the web handler");
             }
         }
-    });
+
+        Ok(())
+    })
 }
 
 fn router(state: Arc<AppState>) -> Router {
@@ -112,49 +122,64 @@ async fn listen(State(state): State<Arc<AppState>>, socket: WebSocketUpgrade) ->
 }
 
 #[instrument(skip_all)]
-async fn handle_websocket(mut socket: WebSocket, state: Arc<AppState>) {
-    let tmpfile = tempfile::NamedTempFile::new();
-    if tmpfile.is_err() {
-        return;
+async fn handle_websocket(socket: WebSocket, state: Arc<AppState>) {
+    if let Err(err) = handle_websocket_with_result(socket, state).await {
+        tracing::error!(err = ?err, "WebSocket failure");
     }
-    let mut tmpfile = tmpfile.unwrap();
+}
+
+async fn handle_websocket_with_result(
+    mut socket: WebSocket,
+    state: Arc<AppState>,
+) -> Result<(), error::Error> {
+    let mut tmpfile = tempfile::NamedTempFile::new()?;
     let tmppath = tmpfile.path().to_path_buf();
     while let Some(message) = socket.recv().await {
-        let message = if let Ok(message) = message {
-            message
-        } else {
-            return;
-        };
+        let message = message?;
 
         match message {
-            axum::extract::ws::Message::Binary(data) => {
-                if data.is_empty() {
-                    let (tx, rx) = oneshot::channel();
-                    if state.transcriber.send((tmppath, tx)).await.is_err() {
-                        tracing::error!("Transcriber channel is down");
-                        return;
-                    }
-                    let result = rx.await.unwrap();
-                    if socket.send(Message::Text(result)).await.is_err() {
-                        return;
-                    }
-                    if socket.close().await.is_err() {
-                        return;
-                    }
-                    break;
-                } else if tmpfile.write_all(&data).is_err() {
-                    tracing::error!("Failed to write to temp file");
+            axum::extract::ws::Message::Binary(data) if data.is_empty() => {
+                tmpfile.flush()?;
+                let (tx, rx) = oneshot::channel();
+                if state.transcriber.send((tmppath, tx)).await.is_err() {
+                    tracing::error!("The transcriber is gone!");
+                    return Err(error::Error::TranscriberGone);
                 }
+                let result = match rx.await {
+                    Ok(result) => result,
+                    Err(_) => {
+                        tracing::error!("The transcriber closed the channel without responding");
+                        "".into()
+                    }
+                };
+                socket.send(Message::Text(result)).await?;
+                socket.close().await?;
+                break;
+            }
+            axum::extract::ws::Message::Binary(data) => {
+                tmpfile.write_all(&data)?;
             }
             axum::extract::ws::Message::Text(_) => {
+                tmpfile.flush()?;
                 let (tx, rx) = oneshot::channel();
-                let _ = state.transcriber.send((tmppath, tx)).await;
-                let result = rx.await.unwrap_or_default();
-                let _ = socket.send(Message::Text(result)).await;
-                let _ = socket.close().await;
+                if state.transcriber.send((tmppath, tx)).await.is_err() {
+                    tracing::error!("The transcriber is gone!");
+                    return Err(error::Error::TranscriberGone);
+                }
+                let result = match rx.await {
+                    Ok(result) => result,
+                    Err(_) => {
+                        tracing::error!("The transcriber closed the channel without responding");
+                        "".into()
+                    }
+                };
+                socket.send(Message::Text(result)).await?;
+                socket.close().await?;
                 break;
             }
             _ => {}
         }
     }
+
+    Ok(())
 }
