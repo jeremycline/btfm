@@ -22,9 +22,6 @@ features = ["tls-rustls"]
 path = "../btfm-api-structs"
 version = "0.3"
 
-[dependencies.byteorder]
-version = "1"
-
 [dependencies.cached]
 version = "0.42"
 features = ["async_tokio_rt_multi_thread"]
@@ -60,9 +57,6 @@ features = ["v1_20"]
 [dependencies.hex]
 version = "0.4.3"
 features = ["serde"]
-
-[dependencies.hound]
-version = "3"
 
 [dependencies.http]
 version = "0.2"
