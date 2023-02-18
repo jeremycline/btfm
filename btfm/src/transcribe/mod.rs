@@ -41,7 +41,7 @@ impl Transcriber {
             }
             Backend::Whisper => {
                 let mut worker =
-                    whisper::TranscriberWorker::new(receiver, config.whisper.websocket_url.clone());
+                    whisper::TranscriberWorker::new(receiver, config.whisper.model.clone());
                 tokio::spawn(async move { worker.run().await });
             }
         }

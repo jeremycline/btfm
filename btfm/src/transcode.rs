@@ -7,9 +7,7 @@ use gstreamer::traits::ElementExt;
 use gstreamer::traits::GstBinExt;
 use tracing::instrument;
 
-/// Convert Discord audio to a format we can send to the Whisper server.
-///
-/// Currently this is just producing a WAV file.
+/// Convert Discord audio to a format we can send to Whisper.
 pub(crate) fn whisper_pipeline() -> gstreamer::Pipeline {
     let pipeline = gstreamer::Pipeline::new(Some("whisper"));
 
@@ -32,12 +30,15 @@ pub(crate) fn whisper_pipeline() -> gstreamer::Pipeline {
     let audio_converter = gstreamer::ElementFactory::make("audioconvert")
         .build()
         .expect("Install GStreamer plugins");
-    let wavenc = gstreamer::ElementFactory::make("wavenc")
-        .build()
-        .expect("Install wavenc for Gstreamer");
     let appsink = gstreamer_app::AppSink::builder()
         .name("whisper-appsink")
         .build();
+    let caps = gstreamer_audio::AudioInfo::builder(gstreamer_audio::AudioFormat::F32le, 16_000, 1)
+        .build()
+        .expect("Previously valid audio info is now invalid")
+        .to_caps()
+        .expect("Previously valid capabilities are now invalid");
+    appsink.set_caps(Some(&caps));
     appsink.set_async(false);
     appsink.set_sync(false);
 
@@ -46,7 +47,6 @@ pub(crate) fn whisper_pipeline() -> gstreamer::Pipeline {
         &parser,
         &audio_resampler,
         &audio_converter,
-        &wavenc,
         appsink.upcast_ref(),
     ];
     pipeline
@@ -62,7 +62,7 @@ pub(crate) fn whisper_pipeline() -> gstreamer::Pipeline {
 }
 
 #[instrument(skip_all)]
-pub(crate) async fn whisper_transcode(data: Vec<u8>) -> Vec<u8> {
+pub(crate) async fn whisper_transcode(data: Vec<u8>) -> Vec<f32> {
     let pipeline = whisper_pipeline();
     let mut bus = pipeline
         .bus()
@@ -106,7 +106,12 @@ pub(crate) async fn whisper_transcode(data: Vec<u8>) -> Vec<u8> {
             transcoded_data.extend_from_slice(buffer_map.as_slice());
         }
 
-        transcoded_data
+        let samples = transcoded_data
+            .chunks_exact(4)
+            .map(|chunk| f32::from_le_bytes(chunk.try_into().expect("chunks_exact lied to us")))
+            .collect::<Vec<_>>();
+
+        samples
     };
 
     let mut buffer = gstreamer::Buffer::with_size(data.len()).unwrap();

@@ -37,6 +37,8 @@ pub enum Error {
     Http(#[from] reqwest::Error),
     #[error("A Url parsing error occurred")]
     ParseUrl(#[from] url::ParseError),
+    #[error("An unexpected error occurred from the Python module: {0}")]
+    Python(#[from] pyo3::PyErr),
 }
 
 /// Serializer for UUIDs

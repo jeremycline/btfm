@@ -26,7 +26,7 @@ pub struct Config {
     pub guild_id: u64,
     /// How much to rate limit the bot. The odds of playing are 1 - e^-(x/rate_adjuster).
     pub rate_adjuster: f64,
-    /// DeepSpeech-specific configuration options
+    /// Whisper configuration options
     pub whisper: Whisper,
     /// Deepgram-specific configuration options
     pub deepgram: Deepgram,
@@ -41,13 +41,13 @@ pub struct Config {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Whisper {
     /// Path to the whisper-server endpoint; for example "ws://localhost:8000/v1/listen"
-    pub websocket_url: Url,
+    pub model: PathBuf,
 }
 
 impl Default for Whisper {
     fn default() -> Self {
         Whisper {
-            websocket_url: Url::parse("ws://localhost:8000/v1/listen").expect("That's a valid URL"),
+            model: PathBuf::from("/var/lib/btfm/whisper/base.en.pt"),
         }
     }
 }

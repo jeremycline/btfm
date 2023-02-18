@@ -68,8 +68,15 @@ version = "1"
 version = "0.14"
 features=["full"]
 
+[dependencies.numpy]
+version = "0.18"
+
 [dependencies.once_cell]
 version = "1"
+
+[dependencies.pyo3]
+version = "0.18"
+features = ["auto-initialize"]
 
 [dependencies.rand]
 version = "0.8"
