@@ -50,3 +50,6 @@ features = ["codec"]
 [dependencies.ulid]
 version = "1.0.0"
 features = ["serde"]
+
+[[bin]]
+name = "btfm"
