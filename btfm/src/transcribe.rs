@@ -1,4 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
+
+/// Handles the transcription of audio to text.
+///
+/// The behaviour of the transcription worker depends on what backend is
+/// being used to transcribe the audio (DeepSpeech's CPU build, CUDA build, or some
+/// third-party service).
 use std::{path::PathBuf, thread::JoinHandle};
 
 use numpy::IntoPyArray;
@@ -6,10 +12,60 @@ use pyo3::{types::PyModule, Python};
 use tokio::sync::{mpsc, oneshot};
 use tracing::Instrument;
 
-use super::TranscriptionRequest;
+use crate::config::Config;
 use crate::transcode::whisper_transcode;
+use crate::Backend;
 
-const WHISPER: &str = include_str!("../transcribe.py");
+
+#[derive(Debug)]
+pub enum TranscriptionRequest {
+    Stream {
+        audio: mpsc::Receiver<Vec<i16>>,
+        respond_to: mpsc::Sender<String>,
+        span: tracing::Span,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub struct Transcriber {
+    sender: mpsc::Sender<TranscriptionRequest>,
+}
+
+impl Transcriber {
+    /// Construct a new Transcriber
+    pub fn new(config: &Config, backend: &Backend) -> Self {
+        let (sender, receiver) = mpsc::channel(32);
+
+        match backend {
+            Backend::Whisper => {
+                let mut worker =
+                    TranscriberWorker::new(receiver, config.whisper.model.clone());
+                tokio::spawn(async move { worker.run().await });
+            }
+        }
+
+        Self { sender }
+    }
+
+    /// Stream audio to the transcriber and receive a stream of text back
+    ///
+    /// Audio is expected to be stereo signed 16 bit PCM at 48khz
+    pub async fn stream(&self, audio: mpsc::Receiver<Vec<i16>>) -> mpsc::Receiver<String> {
+        let (respond_to, text_receiver) = mpsc::channel(256);
+
+        let request = TranscriptionRequest::Stream {
+            audio,
+            respond_to,
+            span: tracing::Span::current(),
+        };
+
+        let _ = self.sender.send(request).await;
+
+        text_receiver
+    }
+}
+
+const WHISPER: &str = include_str!("transcribe.py");
 
 pub struct TranscriberWorker {
     receiver: mpsc::Receiver<TranscriptionRequest>,
