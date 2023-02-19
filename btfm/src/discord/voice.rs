@@ -8,6 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use chrono::NaiveDateTime;
 use rand::prelude::*;
+use regex::Regex;
 use serenity::CacheAndHttp;
 use serenity::{async_trait, http::client::Http, model::id::ChannelId, prelude::*};
 use songbird::{
@@ -188,11 +189,16 @@ async fn handle_text(
     call: Arc<Mutex<Call>>,
     text_receiver: oneshot::Receiver<String>,
 ) {
-    let text = text_receiver.await.unwrap_or_default();
-    if text.trim().is_empty() {
+    lazy_static::lazy_static! {
+        static ref RE: Regex = Regex::new(r"[^\w\s]").unwrap();
+    }
+
+    let punctuated_text = text_receiver.await.unwrap_or_default();
+    if punctuated_text.trim().is_empty() {
         debug!("It didn't sound like anything to the bot");
         return;
     }
+    let text = RE.replace_all(&punctuated_text, "").to_lowercase();
 
     let current_time = NaiveDateTime::from_timestamp_opt(
         SystemTime::now()
@@ -220,7 +226,8 @@ async fn handle_text(
                         .clone()
                         .unwrap_or_else(|| "It doesn't look like anything to me.".to_string());
                     if text.contains("all together") || text.contains("altogether") {
-                        body = text.replace("all together", "");
+                        body = punctuated_text.to_lowercase();
+                        body = body.replace("all together", "");
                         body = body.replace("altogether", "");
                     }
                     match crate::mimic::tts(&cache_dir, &btfm.http_client, endpoint, body, voice)

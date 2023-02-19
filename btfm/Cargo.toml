@@ -68,6 +68,9 @@ version = "1"
 version = "0.14"
 features=["full"]
 
+[dependencies.lazy_static]
+version = "1.4"
+
 [dependencies.numpy]
 version = "0.18"
 
@@ -77,6 +80,9 @@ version = "1"
 [dependencies.pyo3]
 version = "0.18"
 features = ["auto-initialize"]
+
+[dependencies.regex]
+version = "1.7.1"
 
 [dependencies.rand]
 version = "0.8"

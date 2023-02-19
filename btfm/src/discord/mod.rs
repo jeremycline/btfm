@@ -49,7 +49,7 @@ impl BtfmData {
             ))
             .build()
             .expect("Unable to build a basic HTTP client");
-        let transcriber = Transcriber::new(&config, &backend);
+        let transcriber = Transcriber::new(&config, &backend).expect("Unable to build transcriber");
         BtfmData {
             config,
             transcriber,

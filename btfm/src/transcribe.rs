@@ -34,17 +34,17 @@ pub struct Transcriber {
 
 impl Transcriber {
     /// Construct a new Transcriber
-    pub fn new(config: &Config, backend: &Backend) -> Self {
+    pub fn new(config: &Config, backend: &Backend) -> Result<Self, crate::Error> {
         let (sender, receiver) = mpsc::channel(32);
 
         match backend {
             Backend::Whisper => {
-                let mut worker = TranscriberWorker::new(receiver, config.whisper.model.clone());
+                let mut worker = TranscriberWorker::new(receiver, config.whisper.model.clone())?;
                 tokio::spawn(async move { worker.run().await });
             }
         }
 
-        Self { sender }
+        Ok(Self { sender })
     }
 
     /// Stream audio to the transcriber and receive a stream of text back
@@ -65,86 +65,86 @@ impl Transcriber {
     }
 }
 
-pub struct TranscriberWorker {
+struct TranscriberWorker {
     receiver: mpsc::Receiver<TranscriptionRequest>,
     _transcriber: JoinHandle<Result<(), crate::Error>>,
     transcribe_channel: mpsc::Sender<(Vec<f32>, oneshot::Sender<String>)>,
 }
 
 impl TranscriberWorker {
-    pub fn new(receiver: mpsc::Receiver<TranscriptionRequest>, model: PathBuf) -> Self {
+    fn new(
+        receiver: mpsc::Receiver<TranscriptionRequest>,
+        model: PathBuf,
+    ) -> Result<Self, crate::Error> {
         let (tx, rx) = tokio::sync::mpsc::channel(64);
-        let transcriber = std::thread::spawn(|| transcribe(model, rx));
-        TranscriberWorker {
+        let transcriber = std::thread::Builder::new()
+            .name("whisper-transcriber".into())
+            .spawn(|| Self::transcribe(model, rx))?;
+        Ok(TranscriberWorker {
             receiver,
             _transcriber: transcriber,
             transcribe_channel: tx,
-        }
+        })
     }
 
-    fn transcribe(&mut self, request: TranscriptionRequest) {
-        match request {
-            TranscriptionRequest::Stream {
-                audio,
-                respond_to,
-                span,
-            } => {
-                let handler = handle_request(self.transcribe_channel.clone(), audio, respond_to)
-                    .instrument(span);
-                tokio::spawn(handler);
+    /// Processes transcription requests until the given receiver closes.
+    ///
+    /// This is intended to be run in a dedicated thread.
+    fn transcribe(
+        model: PathBuf,
+        mut audio_receiver: mpsc::Receiver<(Vec<f32>, oneshot::Sender<String>)>,
+    ) -> Result<(), crate::Error> {
+        Python::with_gil(|py| {
+            let module = PyModule::from_code(py, WHISPER, "transcribe.py", "transcribe")?;
+
+            let load_model = module.getattr("load_model")?;
+            load_model.call1((model,))?;
+
+            let transcriber = module.getattr("transcribe")?;
+
+            while let Some((audio, sender)) = audio_receiver.blocking_recv() {
+                let audio = audio.into_pyarray(py);
+                let result = transcriber
+                    .call1((audio,))
+                    .and_then(|r| r.extract())
+                    .unwrap_or_default();
+                if sender.send(result).is_err() {
+                    tracing::error!("Failed to send STT result back to the caller.");
+                }
             }
-        }
+
+            Ok(())
+        })
     }
 
-    pub async fn run(&mut self) {
+    async fn run(&mut self) {
         while let Some(request) = self.receiver.recv().await {
-            self.transcribe(request);
-        }
-    }
-}
+            match request {
+                TranscriptionRequest::Stream {
+                    mut audio,
+                    respond_to,
+                    span,
+                } => {
+                    let transcriber = self.transcribe_channel.clone();
+                    tokio::spawn(
+                        async move {
+                            let mut bin = Vec::new();
+                            while let Some(chunk) = audio.recv().await {
+                                for sample in chunk.into_iter() {
+                                    bin.append(&mut sample.to_le_bytes().to_vec());
+                                }
+                            }
 
-async fn handle_request(
-    transcribe_channel: mpsc::Sender<(Vec<f32>, oneshot::Sender<String>)>,
-    mut audio: mpsc::Receiver<Vec<i16>>,
-    respond_to: oneshot::Sender<String>,
-) {
-    let mut bin = Vec::new();
-    while let Some(chunk) = audio.recv().await {
-        for sample in chunk.into_iter() {
-            bin.append(&mut sample.to_le_bytes().to_vec());
-        }
-    }
+                            let bin = whisper_transcode(bin).await;
 
-    let bin = whisper_transcode(bin).await;
-
-    if transcribe_channel.send((bin, respond_to)).await.is_err() {
-        tracing::error!("The transcriber thread is gone?");
-    }
-}
-
-fn transcribe(
-    model: PathBuf,
-    mut audio_receiver: mpsc::Receiver<(Vec<f32>, oneshot::Sender<String>)>,
-) -> Result<(), crate::Error> {
-    Python::with_gil(|py| {
-        let module = PyModule::from_code(py, WHISPER, "transcribe.py", "transcribe")?;
-
-        let load_model = module.getattr("load_model")?;
-        load_model.call1((model,))?;
-
-        let transcriber = module.getattr("transcribe")?;
-
-        while let Some((audio, sender)) = audio_receiver.blocking_recv() {
-            let audio = audio.into_pyarray(py);
-            let result = transcriber
-                .call1((audio,))
-                .and_then(|r| r.extract())
-                .unwrap_or_default();
-            if sender.send(result).is_err() {
-                tracing::error!("Failed to send STT result back to the caller.");
+                            if transcriber.send((bin, respond_to)).await.is_err() {
+                                tracing::error!("The transcriber thread is gone?");
+                            }
+                        }
+                        .instrument(span),
+                    );
+                }
             }
         }
-
-        Ok(())
-    })
+    }
 }
