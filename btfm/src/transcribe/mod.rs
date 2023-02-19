@@ -8,7 +8,6 @@ use tokio::sync::mpsc;
 use crate::config::Config;
 use crate::Backend;
 
-mod deepgram;
 mod whisper;
 
 #[derive(Debug)]
@@ -31,14 +30,6 @@ impl Transcriber {
         let (sender, receiver) = mpsc::channel(32);
 
         match backend {
-            Backend::Deepgram => {
-                let mut worker = deepgram::TranscriberWorker::new(
-                    receiver,
-                    config.deepgram.api_key.clone(),
-                    config.deepgram.websocket_url.clone(),
-                );
-                tokio::spawn(async move { worker.run().await });
-            }
             Backend::Whisper => {
                 let mut worker =
                     whisper::TranscriberWorker::new(receiver, config.whisper.model.clone());

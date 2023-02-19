@@ -28,8 +28,6 @@ pub struct Config {
     pub rate_adjuster: f64,
     /// Whisper configuration options
     pub whisper: Whisper,
-    /// Deepgram-specific configuration options
-    pub deepgram: Deepgram,
     /// The HTTP server configution options
     pub http_api: HttpApi,
     /// The time between random clip plays, in seconds.
@@ -40,7 +38,9 @@ pub struct Config {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Whisper {
-    /// Path to the whisper-server endpoint; for example "ws://localhost:8000/v1/listen"
+    /// Path to the Whisper model. If file doesn't exist,
+    /// it is downloaded. Note the filename must match a
+    /// valid Whisper model name to work.
     pub model: PathBuf,
 }
 
@@ -48,23 +48,6 @@ impl Default for Whisper {
     fn default() -> Self {
         Whisper {
             model: PathBuf::from("/var/lib/btfm/whisper/base.en.pt"),
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Deepgram {
-    /// The Deepgram API key to authenticate with
-    pub api_key: String,
-    /// The Deepgram streaming API endpoint; for example "wss://api.deepgram.com/v1/listen"
-    pub websocket_url: Url,
-}
-
-impl Default for Deepgram {
-    fn default() -> Self {
-        Deepgram {
-            api_key: "your-api-key".to_string(),
-            websocket_url: Url::parse("wss://api.deepgram.com/v1/listen").unwrap(),
         }
     }
 }
@@ -105,7 +88,6 @@ impl Default for Config {
             log_channel_id: None,
             guild_id: 0,
             rate_adjuster: 120.0,
-            deepgram: Default::default(),
             whisper: Default::default(),
             http_api: Default::default(),
             random_clip_interval: 60 * 15,
