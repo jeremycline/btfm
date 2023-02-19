@@ -15,7 +15,7 @@ use songbird::{
     model::payload::{ClientDisconnect, Speaking},
     Call, Event, EventContext, EventHandler as VoiceEventHandler,
 };
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, error, info, trace, warn, Instrument};
 use ulid::Ulid;
 
@@ -186,14 +186,9 @@ async fn handle_text(
     btfm_data: Arc<Mutex<BtfmData>>,
     http_client: Arc<CacheAndHttp>,
     call: Arc<Mutex<Call>>,
-    text_receiver: mpsc::Receiver<String>,
+    text_receiver: oneshot::Receiver<String>,
 ) {
-    let mut snippets = Vec::new();
-    let mut receiver = text_receiver;
-    while let Some(snippet) = receiver.recv().await {
-        snippets.push(snippet.replace('\"', ""));
-    }
-    let text = snippets.join(" ");
+    let text = text_receiver.await.unwrap_or_default();
     if text.trim().is_empty() {
         debug!("It didn't sound like anything to the bot");
         return;

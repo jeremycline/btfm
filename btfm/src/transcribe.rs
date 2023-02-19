@@ -16,12 +16,13 @@ use crate::config::Config;
 use crate::transcode::whisper_transcode;
 use crate::Backend;
 
+const WHISPER: &str = include_str!("transcribe.py");
 
 #[derive(Debug)]
 pub enum TranscriptionRequest {
     Stream {
         audio: mpsc::Receiver<Vec<i16>>,
-        respond_to: mpsc::Sender<String>,
+        respond_to: oneshot::Sender<String>,
         span: tracing::Span,
     },
 }
@@ -38,8 +39,7 @@ impl Transcriber {
 
         match backend {
             Backend::Whisper => {
-                let mut worker =
-                    TranscriberWorker::new(receiver, config.whisper.model.clone());
+                let mut worker = TranscriberWorker::new(receiver, config.whisper.model.clone());
                 tokio::spawn(async move { worker.run().await });
             }
         }
@@ -50,8 +50,8 @@ impl Transcriber {
     /// Stream audio to the transcriber and receive a stream of text back
     ///
     /// Audio is expected to be stereo signed 16 bit PCM at 48khz
-    pub async fn stream(&self, audio: mpsc::Receiver<Vec<i16>>) -> mpsc::Receiver<String> {
-        let (respond_to, text_receiver) = mpsc::channel(256);
+    pub async fn stream(&self, audio: mpsc::Receiver<Vec<i16>>) -> oneshot::Receiver<String> {
+        let (respond_to, text_receiver) = oneshot::channel();
 
         let request = TranscriptionRequest::Stream {
             audio,
@@ -64,8 +64,6 @@ impl Transcriber {
         text_receiver
     }
 }
-
-const WHISPER: &str = include_str!("transcribe.py");
 
 pub struct TranscriberWorker {
     receiver: mpsc::Receiver<TranscriptionRequest>,
@@ -108,7 +106,7 @@ impl TranscriberWorker {
 async fn handle_request(
     transcribe_channel: mpsc::Sender<(Vec<f32>, oneshot::Sender<String>)>,
     mut audio: mpsc::Receiver<Vec<i16>>,
-    respond_to: mpsc::Sender<String>,
+    respond_to: oneshot::Sender<String>,
 ) {
     let mut bin = Vec::new();
     while let Some(chunk) = audio.recv().await {
@@ -118,13 +116,9 @@ async fn handle_request(
     }
 
     let bin = whisper_transcode(bin).await;
-    let (tx, rx) = oneshot::channel();
 
-    if transcribe_channel.send((bin, tx)).await.is_err() {
+    if transcribe_channel.send((bin, respond_to)).await.is_err() {
         tracing::error!("The transcriber thread is gone?");
-        let _ = respond_to.send("".to_string()).await;
-    } else if respond_to.send(rx.await.unwrap_or_default()).await.is_err() {
-        tracing::error!("Failed to ferry response back to caller");
     }
 }
 
