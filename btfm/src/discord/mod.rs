@@ -14,7 +14,7 @@ pub struct BtfmData {
     /// Application configuration
     pub config: Config,
     /// Service to handle transcription requests
-    transcriber: Transcriber,
+    pub transcriber: Transcriber,
     /// Map ssrcs to Users
     users: HashMap<u32, User>,
     // Map user IDs to ssrc

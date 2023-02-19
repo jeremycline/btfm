@@ -5,7 +5,8 @@
 /// The behaviour of the transcription worker depends on what backend is
 /// being used to transcribe the audio (DeepSpeech's CPU build, CUDA build, or some
 /// third-party service).
-use std::{path::PathBuf, thread::JoinHandle};
+use std::path::PathBuf;
+use std::thread::JoinHandle;
 
 use numpy::IntoPyArray;
 use pyo3::{types::PyModule, Python};
@@ -25,6 +26,7 @@ pub enum TranscriptionRequest {
         respond_to: oneshot::Sender<String>,
         span: tracing::Span,
     },
+    Shutdown,
 }
 
 #[derive(Debug, Clone)]
@@ -39,12 +41,16 @@ impl Transcriber {
 
         match backend {
             Backend::Whisper => {
-                let mut worker = TranscriberWorker::new(receiver, config.whisper.model.clone())?;
+                let worker = TranscriberWorker::new(receiver, config.whisper.model.clone())?;
                 tokio::spawn(async move { worker.run().await });
             }
         }
 
         Ok(Self { sender })
+    }
+
+    pub async fn shutdown(&self) {
+        let _ = self.sender.send(TranscriptionRequest::Shutdown).await;
     }
 
     /// Stream audio to the transcriber and receive a stream of text back
@@ -65,10 +71,15 @@ impl Transcriber {
     }
 }
 
+enum Request {
+    Raw(Vec<f32>, oneshot::Sender<String>),
+    Shutdown,
+}
+
 struct TranscriberWorker {
     receiver: mpsc::Receiver<TranscriptionRequest>,
-    _transcriber: JoinHandle<Result<(), crate::Error>>,
-    transcribe_channel: mpsc::Sender<(Vec<f32>, oneshot::Sender<String>)>,
+    transcriber: Option<JoinHandle<Result<(), crate::Error>>>,
+    transcribe_channel: mpsc::Sender<Request>,
 }
 
 impl TranscriberWorker {
@@ -77,12 +88,14 @@ impl TranscriberWorker {
         model: PathBuf,
     ) -> Result<Self, crate::Error> {
         let (tx, rx) = tokio::sync::mpsc::channel(64);
-        let transcriber = std::thread::Builder::new()
-            .name("whisper-transcriber".into())
-            .spawn(|| Self::transcribe(model, rx))?;
+        let transcriber = Some(
+            std::thread::Builder::new()
+                .name("whisper-transcriber".into())
+                .spawn(|| Self::transcribe(model, rx))?,
+        );
         Ok(TranscriberWorker {
             receiver,
-            _transcriber: transcriber,
+            transcriber,
             transcribe_channel: tx,
         })
     }
@@ -92,9 +105,9 @@ impl TranscriberWorker {
     /// This is intended to be run in a dedicated thread.
     fn transcribe(
         model: PathBuf,
-        mut audio_receiver: mpsc::Receiver<(Vec<f32>, oneshot::Sender<String>)>,
+        mut audio_receiver: mpsc::Receiver<Request>,
     ) -> Result<(), crate::Error> {
-        Python::with_gil(|py| {
+        let result = Python::with_gil(|py| {
             let module = PyModule::from_code(py, WHISPER, "transcribe.py", "transcribe")?;
 
             let load_model = module.getattr("load_model")?;
@@ -102,22 +115,37 @@ impl TranscriberWorker {
 
             let transcriber = module.getattr("transcribe")?;
 
-            while let Some((audio, sender)) = audio_receiver.blocking_recv() {
-                let audio = audio.into_pyarray(py);
-                let result = transcriber
-                    .call1((audio,))
-                    .and_then(|r| r.extract())
-                    .unwrap_or_default();
-                if sender.send(result).is_err() {
-                    tracing::error!("Failed to send STT result back to the caller.");
+            while let Some(request) = audio_receiver.blocking_recv() {
+                match request {
+                    Request::Raw(audio, sender) => {
+                        tracing::debug!("Processing new transcription request");
+                        let audio = audio.into_pyarray(py);
+                        let result = transcriber
+                            .call1((audio,))
+                            .and_then(|r| r.extract())
+                            .unwrap_or_default();
+                        if sender.send(result).is_err() {
+                            tracing::error!("Failed to send STT result back to the caller.");
+                        }
+                    }
+                    Request::Shutdown => {
+                        tracing::info!("Shutting down the transcriber");
+                        break;
+                    }
                 }
             }
 
             Ok(())
-        })
+        });
+
+        if result.is_err() {
+            tracing::error!(err = ?result, "Transcribe thread failed!");
+        }
+
+        result
     }
 
-    async fn run(&mut self) {
+    async fn run(mut self) {
         while let Some(request) = self.receiver.recv().await {
             match request {
                 TranscriptionRequest::Stream {
@@ -137,12 +165,35 @@ impl TranscriberWorker {
 
                             let bin = whisper_transcode(bin).await;
 
-                            if transcriber.send((bin, respond_to)).await.is_err() {
+                            if transcriber
+                                .send(Request::Raw(bin, respond_to))
+                                .await
+                                .is_err()
+                            {
                                 tracing::error!("The transcriber thread is gone?");
                             }
                         }
                         .instrument(span),
                     );
+                }
+                TranscriptionRequest::Shutdown => {
+                    if self
+                        .transcribe_channel
+                        .send(Request::Shutdown)
+                        .await
+                        .is_err()
+                    {
+                        panic!("Unable to shut down the transcriber thread gracefully")
+                    }
+
+                    if let Some(thread) = self.transcriber.take() {
+                        let result = thread.join();
+                        match result {
+                            Err(_) => tracing::error!("Failed to join the transcriber thread"),
+                            Ok(Ok(_)) => tracing::info!("Shut down transcriber thread"),
+                            Ok(Err(e)) => tracing::error!(error=?e, "Transcriber thread crashed"),
+                        };
+                    }
                 }
             }
         }

@@ -66,11 +66,26 @@ async fn process_command(opts: cli::Btfm, db_pool: Pool<Postgres>) -> Result<(),
                 .framework(framework)
                 .register_songbird_with(songbird)
                 .await?;
+
+            let http_handle = axum_server::Handle::new();
             {
                 let mut data = client.data.write().await;
-
+                let btfm_data = BtfmData::new(backend).await;
+                let transcriber = btfm_data.transcriber.clone();
+                let handle = http_handle.clone();
                 data.insert::<HttpClient>(Arc::clone(&client.cache_and_http));
-                data.insert::<BtfmData>(Arc::new(Mutex::new(BtfmData::new(backend).await)));
+                data.insert::<BtfmData>(Arc::new(Mutex::new(btfm_data)));
+
+                tokio::spawn(async move {
+                    let _shutdown_signal = tokio::signal::ctrl_c().await;
+                    tracing::info!("Shutdown signal received; beginning graceful shutdown.");
+                    transcriber.shutdown().await;
+                    handle.graceful_shutdown(Some(std::time::Duration::from_secs(15)));
+
+                    // TODO figure out why the transcriber still blocks shutdown.
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                    std::process::exit(1);
+                });
             }
             let discord_client_handle = tokio::spawn(async move { client.start().await });
 
@@ -81,6 +96,7 @@ async fn process_command(opts: cli::Btfm, db_pool: Pool<Postgres>) -> Result<(),
                     info!("Starting HTTP server on {:?}", &http_api.url);
                     tokio::spawn(async move {
                         axum_server::bind(http_api.url)
+                            .handle(http_handle)
                             .serve(router.into_make_service())
                             .await
                             .map_err(Error::Server)
@@ -91,6 +107,7 @@ async fn process_command(opts: cli::Btfm, db_pool: Pool<Postgres>) -> Result<(),
                     let tls_config =
                         axum_server::tls_rustls::RustlsConfig::from_pem_file(cert, key).await?;
                     axum_server::bind_rustls(http_api.url, tls_config)
+                        .handle(http_handle)
                         .serve(router.into_make_service())
                         .await
                         .map_err(Error::Server)
