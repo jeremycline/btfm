@@ -51,7 +51,7 @@ version = "0.19"
 features = ["v1_20"]
 
 [dependencies.gstreamer-audio]
-version = "0.19"
+version = "0.20"
 features = ["v1_20"]
 
 [dependencies.hex]
