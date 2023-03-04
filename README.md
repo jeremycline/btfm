@@ -16,40 +16,6 @@ plays audio clips into the channel in response.
 You'll need to register a bot with Discord. Go to [the Developer application
 page](https://discord.com/developers/applications) and create an application.
 
-
-Download the [deepspeech native_client build for your
-platform](https://github.com/mozilla/DeepSpeech/releases/tag/v0.9.3), along
-with the
-[acoustic
-model](https://github.com/mozilla/DeepSpeech/releases/download/v0.9.3/deepspeech-0.9.3-models.pbmm)
-and [external
-scorer](https://github.com/mozilla/DeepSpeech/releases/download/v0.9.3/deepspeech-0.9.3-models.scorer).
-
-If you're not sure which deepspeech build you need, you likely want [the x86_64
-CPU
-build](https://github.com/mozilla/DeepSpeech/releases/download/v0.9.3/native_client.amd64.cpu.linux.tar.xz)
-
-If you don't want to build BTFM from source, there's an [x86_64 build for
-Linux](https://github.com/jeremycline/btfm/releases) for each release that you
-can download. For example:
-
-```
-wget https://github.com/jeremycline/btfm/releases/download/v0.13.0/btfm-x86_64-unknown-linux-gnu
-mv btfm-x86_64-unknown-linux-gnu /usr/local/bin/btfm
-```
-
-### DeepSpeech
-
-Extract the deepspeech shared library and set up your paths so that it can be found; for example, on Fedora:
-
-```
-wget "https://github.com/mozilla/DeepSpeech/releases/download/v0.9.3/native_client.amd64.cpu.linux.tar.xz"
-mkdir deepspeech && tar -xvf native_client.amd64.cpu.linux.tar.xz -C deepspeech
-sudo cp deepspeech/libdeepspeech.so /usr/local/lib64/
-echo "/usr/local/lib64" | sudo tee -a /etc/ld.so.conf.d/local.conf
-sudo ldconfig
-```
-
 ### PostgreSQL
 
 BTFM uses a PostgreSQL database to store audio clip metadata. Install PostgreSQL and create a database. For example:
@@ -61,43 +27,92 @@ sudo -u postgres createuser btfm
 sudo -u postgres createdb btfm
 sudo -u postgres psql -c "ALTER USER btfm PASSWORD 'password';"
 sudo -u postgres psql -c "ALTER DATABASE btfm OWNER to btfm;"
-export DATABASE_URL=postgres://btfm:password@localhost/btfm
-
-# Create the initial database tables
-cargo install sqlx-cli
-cargo sqlx database setup
 ```
+
+The `btfm-server` service will create the database schema when it connects. Any migrations required will also
+be run automatically on updates.
 
 ### Configuration
 
-Create the data directory where the audio clips are stored. For example:
+Create a user for the bot:
 
 ```
-mkdir /var/lib/btfm/
+$ sudo useradd --home-dir=/var/lib/btfm --create-home btfm
 ```
 
 An example configuration file:
 
 ```
-# The directory where audio clips and other data is stored
-data_directory = '/var/lib/btfm/'
+# The directory where audio clips and other data is stored.
+# The server will create two directories in the data directory: "clips" contains
+# the uploaded audio clips and "tts_cache" stores any text-to-speech audio it creates.
+# The "tts_cache" directory can be safely removed if it grows too large.
+data_directory = "/var/lib/btfm/"
+# The database created in the prior step; substitute the password as necessary.
 database_url = 'postgres://btfm:password@localhost/btfm'
+# This is the Discord API token you got during the Discord registration step.
 discord_token = 'your discord token here'
-# The channel to join when someone enters
+# The channel to join when someone enters; this is available by enabling "Developer Mode"
+# in the Discord client in the advanced settings, then right-clicking a voice channel and
+# copying the ID.
 channel_id = 0
-# The guild ID to join
+# The server ID to join; this is available by enabling "Developer Mode" in the Discord
+# client in the advanced settings, then right-clicking a server and copying the ID.
 guild_id = 0
-# The optional channel to log transcriptions to
+# The optional channel to log events to; when a clip is matched the bot will post a message
+# in this text channel.
 log_channel_id = 0
-# Adjust the frequency of playing clips
+# Adjust the frequency of playing clips; the odds of a clip being played is
+# 1 - e^(-x/rate_adjuster) where "x" is the number of seconds since the last clip was played.
 rate_adjuster = 100
+# The bot will play a random clip at the interval provided (in seconds)
+random_clip_interval = 900
+# If set, this is the URL for a mimic3 HTTP API used to convert text-to-speech so the bot can
+# talk back.
+mimic_endpoint = "http://localhost:8888/api/"
 
-[deepspeech]
-model = '/var/lib/btfm/deepspeech.pbmm'
-scorer = '/var/lib/btfm/deepspeech.scorer'
+[whisper]
+# The path to the OpenAI Whisper model to use for transcription.
+model = "/var/lib/btfm/whisper/base.en.pt"
+
+[http_api]
+# Where the HTTP API used for management listens.
+url = "127.0.0.1:8080"
+# The username required to authenticate with the management API
+user = "admin"
+# The password required to authenticate with the management API
+password = "admin"
+
+# To enable TLS for the HTTP API, set the following two keys. If
+# TLS should not be used, ensure these keys don't exist.
+#
+# If set, tls_key must also be set and the HTTP API will use TLS
+tls_certificate = "/var/lib/btfm/fullchain.pem"
+# If set, tls_certificate must also be set and the HTTP API will use TLS
+tls_key = "/var/lib/btfm/privkey.pem"
 ```
 
 You can place this, for example, in ``/var/lib/btfm/btfm.toml``.
+
+### Python Environment
+
+The Whisper Python API is used to perform transcription, so you need to set up a Python
+environment and install Whisper. The recommended approach is as follows (assuming you're using
+Fedora Linux):
+
+```
+sudo dnf install python3-pip
+sudo -u btfm bash -c \
+    'python3 -m venv --upgrade-deps $HOME/.whisper && \
+    $HOME/.whisper/bin/pip install openai-whisper'
+```
+
+Next, test the installation and download the model to use (replace the model as necessary and be
+sure to adjust the configured model in btfm.toml to match):
+
+```
+sudo -u btfm bash -c '$HOME/.whisper/bin/whisper --model base.en --model_dir $HOME/whisper/ <an audio file>
+```
 
 ### systemd
 
@@ -112,8 +127,10 @@ After=network.target
 Type=simple
 User=btfm
 Group=btfm
+Environment="PATH=/var/lib/btfm/.whisper/bin:/usr/bin:/usr/local/bin/"
 Environment="BTFM_CONFIG=/var/lib/btfm/btfm.toml"
-ExecStart=/usr/local/bin/btfm run -v
+Environment="RUST_LOG=warn,btfm=info"
+ExecStart=/usr/local/bin/btfm-server run
 Restart=always
 RestartSec=60
 
@@ -123,21 +140,21 @@ WantedBy=multi-user.target
 
 ### Building
 
-If building from source, install make, autotools, libopus headers, libsqlite headers, libsodium headers, and the openssl headers.
+If building from source, install make, autotools, libopus headers, gstreamer headers, libsodium headers, and the openssl headers.
 
 ### Usage
 
 Add clips and phrases with the ``btfm clip`` sub-commands:
 
 ```
-BTFM_CONFIG=/var/lib/btfm/btfm.toml btfm add "they found me" "I don't know how, but they found me..." run-for-it-marty.mp3
+btfm clip add --phrase "they found me" "I don't know how, but they found me..." run-for-it-marty.mp3
 ```
 
 See ``btfm clip --help`` for available sub-commands and options.
 
-Start the bot with ``btfm run``. See the systemd unit above for details.```
+Start the bot with ``btfm-server run``. See the systemd unit above for details.
 
-See ``btfm run --help`` for command line arguments and documentation. To
+See ``btfm-server run --help`` for command line arguments and documentation. To
 obtain the guild and channel ID, go to your Discord User Settings ->
 Appearance, and enable Developer Mode. You can then right-click on the server
 for and select "Copy ID" for the guild ID, and then right-click the voice
