@@ -286,11 +286,15 @@ async fn handle_text(
         )
         .await;
 
-        let source = songbird::ffmpeg(btfm.config.data_directory.join(clip.audio_file))
-            .await
-            .unwrap();
-        let mut unlocked_call = call.lock().await;
-        unlocked_call.enqueue_source(source);
+        let clip_path = btfm.config.data_directory.join(clip.audio_file);
+        match songbird::ffmpeg(&clip_path).await {
+            Ok(source) => {
+                call.lock().await.enqueue_source(source);
+            }
+            Err(e) => {
+                tracing::error!(?clip_path, error=?e, "Unable to play clip");
+            }
+        }
     } else {
         debug!("No phrases matched what the bot heard");
     }
