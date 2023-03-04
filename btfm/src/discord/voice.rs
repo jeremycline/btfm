@@ -30,7 +30,13 @@ pub async fn hello_there(event_name: &str) -> Option<Input> {
         .map(|config| config.data_directory.join(event_name))
         .and_then(|f| if f.exists() { Some(f) } else { None });
     if let Some(path) = hello {
-        Some(songbird::ffmpeg(path).await.unwrap())
+        match songbird::ffmpeg(&path).await {
+            Ok(source) => Some(source),
+            Err(error) => {
+                tracing::error!(?path, ?error, "Failed to create a source from the file");
+                None
+            }
+        }
     } else {
         None
     }
