@@ -28,7 +28,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Download cached dependencies
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         id: deepspeech-cache
         with:
           path: ~/cache
