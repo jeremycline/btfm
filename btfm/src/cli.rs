@@ -55,7 +55,6 @@ pub enum Command {
 
 #[derive(ValueEnum, Clone, Debug)]
 pub enum Backend {
-    Deepgram,
     Whisper,
 }
 

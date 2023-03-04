@@ -1,3 +1,4 @@
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [package]
 name = "btfm"
 version = "0.20.0"
@@ -8,7 +9,6 @@ documentation = "https://docs.rs/btfm/"
 readme = "../README.md"
 repository = "https://github.com/jeremycline/btfm/"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies.axum]
 version = "0.6.6"
@@ -43,15 +43,15 @@ version = "0.3"
 version = "0.3"
 
 [dependencies.gstreamer]
-version = "0.19"
+version = "0.20"
 features = ["v1_20"]
 
 [dependencies.gstreamer-app]
-version = "0.19"
+version = "0.20"
 features = ["v1_20"]
 
 [dependencies.gstreamer-audio]
-version = "0.19"
+version = "0.20"
 features = ["v1_20"]
 
 [dependencies.hex]
@@ -68,8 +68,21 @@ version = "1"
 version = "0.14"
 features=["full"]
 
+[dependencies.lazy_static]
+version = "1.4"
+
+[dependencies.numpy]
+version = "0.18"
+
 [dependencies.once_cell]
 version = "1"
+
+[dependencies.pyo3]
+version = "0.18"
+features = ["auto-initialize"]
+
+[dependencies.regex]
+version = "1.7.1"
 
 [dependencies.rand]
 version = "0.8"
@@ -134,7 +147,7 @@ version = "0.7"
 version = "0.4"
 
 [dependencies.tower-http]
-version = "0.3.5"
+version = "0.4.0"
 features = ["trace", "request-id", "util", "add-extension", "auth", "compression-full", "sensitive-headers"]
 
 [dependencies.url]
@@ -147,3 +160,7 @@ features = ["serde", "uuid"]
 
 [dependencies.uuid]
 version = "1.2.2"
+
+
+[[bin]]
+name = "btfm-server"

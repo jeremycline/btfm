@@ -14,7 +14,7 @@ pub struct BtfmData {
     /// Application configuration
     pub config: Config,
     /// Service to handle transcription requests
-    transcriber: Transcriber,
+    pub transcriber: Transcriber,
     /// Map ssrcs to Users
     users: HashMap<u32, User>,
     // Map user IDs to ssrc
@@ -49,7 +49,7 @@ impl BtfmData {
             ))
             .build()
             .expect("Unable to build a basic HTTP client");
-        let transcriber = Transcriber::new(&config, &backend);
+        let transcriber = Transcriber::new(&config, &backend).expect("Unable to build transcriber");
         BtfmData {
             config,
             transcriber,
