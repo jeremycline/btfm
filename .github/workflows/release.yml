@@ -31,7 +31,7 @@ jobs:
       - name: Install latest stable Rust release
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: docs
+          components: rust-docs
 
       - uses: actions/cache@v3
         with:
