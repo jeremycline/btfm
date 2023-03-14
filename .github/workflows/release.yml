@@ -10,6 +10,14 @@ on:
           - feature
           - bugfix
         required: true
+      package_name:
+        type: choice
+        description: the package to create a release for
+        options:
+          - btfm
+          - btfm-api-structs
+          - btfm-cli
+        required: true
 
 jobs:
   release:
@@ -21,41 +29,36 @@ jobs:
           fetch-depth: 0
 
       - name: Install latest stable Rust release
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
+          components: docs
 
-      - uses: Swatinem/rust-cache@v2
-
-      - name: Download cached dependencies
-        uses: actions/cache@v3
-        id: deepspeech-cache
+      - uses: actions/cache@v3
         with:
-          path: ~/cache
-          key: ${{ runner.os }}
-
-      - name: Download deepspeech
-        if: steps.deepspeech-cache.outputs.cache-hit != 'true'
-        run: |
-          set -x
-          mkdir -p ~/cache
-          curl -L -o ~/cache/deepspeech.tar.xz \
-            "https://github.com/mozilla/DeepSpeech/releases/download/v0.9.3/native_client.amd64.cpu.linux.tar.xz"
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Install dependencies
         run: |
-          mkdir deepspeech
-          pushd deepspeech
-          cp ~/cache/deepspeech.tar.xz .
-          unxz deepspeech.tar.xz
-          tar -xf deepspeech.tar
-          sudo cp libdeepspeech.so /usr/local/lib/
-          sudo ldconfig
-          popd
-          rm -rf deepspeech
-
           sudo apt update
-          sudo apt install postgresql postgresql-contrib
+          sudo apt install \
+            libgstreamer1.0-dev \
+            libgstreamer-plugins-base1.0-dev \
+            libgstreamer-plugins-bad1.0-dev \
+            gstreamer1.0-plugins-base \
+            gstreamer1.0-plugins-good \
+            gstreamer1.0-plugins-bad \
+            gstreamer1.0-plugins-ugly \
+            libunwind-dev \
+            python3 \
+            ffmpeg \
+            postgresql \
+            postgresql-contrib
           sudo systemctl restart postgresql.service
           sudo -u postgres createuser btfm
           sudo -u postgres createdb btfm
@@ -63,29 +66,24 @@ jobs:
           sudo -u postgres psql -c "ALTER DATABASE btfm OWNER to btfm;"
           export DATABASE_URL=postgres://btfm:password@localhost/btfm
           echo "DATABASE_URL=$DATABASE_URL" >> $GITHUB_ENV
-          cargo install cargo-edit
           cargo install sqlx-cli
           cargo sqlx database setup --source btfm/migrations/
+          cargo install cargo-edit
+          pip install openai-whisper
 
       - name: Tag release
         run: |
           set -x
 
-          btfm=${{ github.event.inputs.crate }}
-
-          CURRENT_RELEASE=v"$(head -5 btfm/Cargo.toml | grep "^version.=." | awk '{gsub("\"", ""); print $3}')"
+          package=${{ github.event.inputs.package_name}}
+          CURRENT_RELEASE="$package"-v"$(head -5 $package/Cargo.toml | grep "^version.=." | awk '{gsub("\"", ""); print $3}')"
           if [ "${{ github.event.inputs.release_type }}" == "feature" ]; then
-            cargo set-version -p btfm --bump minor
-            cargo set-version -p btfm-cli --bump minor
-            cargo set-version -p btfm-api-structs --bump minor
+            cargo set-version -p $package --bump minor
           else
-            cargo set-version -p btfm --bump patch
-            cargo set-version -p btfm-cli --bump patch
-            cargo set-version -p btfm-api-structs --bump patch
+            cargo set-version -p $package --bump patch
           fi
           cargo check
-
-          NEW_RELEASE=v"$(head -5 btfm/Cargo.toml | grep "^version.=." | awk '{gsub("\"", ""); print $3}')"
+          NEW_RELEASE="$package"-v"$(head -5 $package/Cargo.toml | grep "^version.=." | awk '{gsub("\"", ""); print $3}')"
 
           git config --global user.email "github-bot@jcline.org"
           git config --global user.name "Automated Release"
@@ -103,6 +101,12 @@ jobs:
           git push origin "$NEW_RELEASE"
 
           echo "TAG=$NEW_RELEASE" >> $GITHUB_ENV
+      
+      - name: Create documentation
+        run: cargo doc --document-private-items --no-deps
+
+      - name: Bundle up the docs for Randy
+        run: tar cvzf the-docs.tar.gz target/doc
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
@@ -112,42 +116,5 @@ jobs:
           body_path: changelog
           tag_name: ${{ env.TAG }}
           generate_release_notes: true
-
-      - name: Publish the CLI to crates.io
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        uses: actions-rs/cargo@v1
-        with:
-          command: publish
-          args: -p btfm-cli
-
-      - name: Publish the service to crates.io
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        uses: actions-rs/cargo@v1
-        with:
-          command: publish
-          args: -p btfm
-
-      - name: Create documentation
-        uses: actions-rs/cargo@v1
-        with:
-          command: doc
-          args: --document-private-items --no-deps
-
-      - name: Bundle up the docs for Randy
-        run: tar cvzf the-docs.tar.gz target/doc
-
-      - name: Create release build
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --profile=production
-
-      - name: Upload release assets
-        uses: softprops/action-gh-release@v1
-        with:
           files: |
-            ./target/production/btfm
-            ./target/production/btfm-cli
             ./the-docs.tar.gz
