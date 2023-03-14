@@ -15,35 +15,56 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - uses: actions-rs/cargo@v1
+      - uses: dtolnay/rust-toolchain@stable
+        with: 
+          components: rustfmt
+
+      - uses: actions/cache@v3
         with:
-          command: fmt
-          args: -- --check -l
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - run: cargo fmt -- --check -l
+
 
   audit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
       - uses: Swatinem/rust-cache@v2
+      - uses: dtolnay/rust-toolchain@stable
 
-      - name: Install latest stable release
-        uses: actions-rs/toolchain@v1
+      - uses: actions/cache@v3
         with:
-            toolchain: stable
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Install cargo-audit
         run: |
           cargo install cargo-audit
 
-      - uses: actions-rs/cargo@v1
-        with:
-          command: audit
+      - run: cargo audit
+
 
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
       - uses: Swatinem/rust-cache@v2
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
       - uses: actions/cache@v3
         with:
           path: ~/.cache/pip
@@ -51,10 +72,15 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
-      - name: Install latest stable Rust release
-        uses: actions-rs/toolchain@v1
+      - uses: actions/cache@v3
         with:
-          toolchain: stable
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Install dependencies
         run: |
@@ -79,14 +105,7 @@ jobs:
           echo "DATABASE_URL=$DATABASE_URL" >> $GITHUB_ENV
           cargo install sqlx-cli
           cargo sqlx database setup --source btfm/migrations/
+          pip install openai-whisper
 
-          pip install git+https://github.com/openai/whisper.git
-
-      - uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          args: --all-targets --all-features -- -D warnings
-
-      - uses: actions-rs/cargo@v1
-        with:
-          command: test
+      - run: cargo clippy --all-targets --all-features -- -D warnings
+      - run: cargo test
