@@ -1,0 +1,32 @@
+name: Build Command-line Interface
+
+on:
+  push:
+    tags:
+      - "btfm-cli-v*"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install latest stable Rust release
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - run: cargo build -p btfm-cli --profile=production
+      
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            ./target/production/btfm-cli
