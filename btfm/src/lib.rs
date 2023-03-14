@@ -21,8 +21,6 @@ pub enum Error {
     ConfigParseError(#[from] toml::de::Error),
     #[error("Configuration file contains invalid values: {0}")]
     ConfigValueError(String),
-    #[error("Invalid backend provided")]
-    BackendParseError,
     #[error("The Discord client encountered an error: {0}")]
     Serenity(#[from] serenity::Error),
     #[error("Unable to generate voice Input: {0}")]
@@ -57,5 +55,3 @@ pub(crate) mod mimic;
 pub mod transcode;
 pub mod transcribe;
 pub mod web;
-
-use cli::Backend;

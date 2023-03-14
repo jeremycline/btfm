@@ -15,7 +15,6 @@ use tracing::Instrument;
 
 use crate::config::Config;
 use crate::transcode::whisper_transcode;
-use crate::Backend;
 
 const WHISPER: &str = include_str!("transcribe.py");
 
@@ -36,15 +35,11 @@ pub struct Transcriber {
 
 impl Transcriber {
     /// Construct a new Transcriber
-    pub fn new(config: &Config, backend: &Backend) -> Result<Self, crate::Error> {
+    pub fn new(config: &Config) -> Result<Self, crate::Error> {
         let (sender, receiver) = mpsc::channel(32);
 
-        match backend {
-            Backend::Whisper => {
-                let worker = TranscriberWorker::new(receiver, config.whisper.model.clone())?;
-                tokio::spawn(async move { worker.run().await });
-            }
-        }
+        let worker = TranscriberWorker::new(receiver, config.whisper.model.clone())?;
+        tokio::spawn(async move { worker.run().await });
 
         Ok(Self { sender })
     }

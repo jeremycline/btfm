@@ -8,7 +8,6 @@ use tokio::sync::mpsc;
 
 use crate::config::Config;
 use crate::transcribe::Transcriber;
-use crate::Backend;
 
 pub struct BtfmData {
     /// Application configuration
@@ -29,7 +28,7 @@ impl TypeMapKey for BtfmData {
     type Value = Arc<Mutex<BtfmData>>;
 }
 impl BtfmData {
-    pub async fn new(backend: Backend) -> BtfmData {
+    pub async fn new() -> BtfmData {
         let config = crate::CONFIG
             .get()
             .expect("CONFIG needs to be initialized before starting the transcriber")
@@ -49,7 +48,7 @@ impl BtfmData {
             ))
             .build()
             .expect("Unable to build a basic HTTP client");
-        let transcriber = Transcriber::new(&config, &backend).expect("Unable to build transcriber");
+        let transcriber = Transcriber::new(&config).expect("Unable to build transcriber");
         BtfmData {
             config,
             transcriber,

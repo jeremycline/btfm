@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{Parser, Subcommand};
 
 use crate::config::{load_config, Config};
 
@@ -40,26 +40,5 @@ pub enum Command {
         clean: bool,
     },
     /// Run the bot service
-    Run {
-        #[arg(
-            short,
-            long,
-            value_enum,
-            ignore_case = true,
-            default_value_t,
-            env = "BTFM_BACKEND"
-        )]
-        backend: crate::Backend,
-    },
-}
-
-#[derive(ValueEnum, Clone, Debug)]
-pub enum Backend {
-    Whisper,
-}
-
-impl Default for Backend {
-    fn default() -> Self {
-        Backend::Whisper
-    }
+    Run {},
 }

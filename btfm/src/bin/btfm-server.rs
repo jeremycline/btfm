@@ -52,7 +52,7 @@ async fn main() {
 
 async fn process_command(opts: cli::Btfm, db_pool: Pool<Postgres>) -> Result<(), Error> {
     match opts.command {
-        cli::Command::Run { backend } => {
+        cli::Command::Run {} => {
             gstreamer::init()?;
 
             let framework = StandardFramework::new();
@@ -70,7 +70,7 @@ async fn process_command(opts: cli::Btfm, db_pool: Pool<Postgres>) -> Result<(),
             let http_handle = axum_server::Handle::new();
             {
                 let mut data = client.data.write().await;
-                let btfm_data = BtfmData::new(backend).await;
+                let btfm_data = BtfmData::new().await;
                 let transcriber = btfm_data.transcriber.clone();
                 let handle = http_handle.clone();
                 data.insert::<HttpClient>(Arc::clone(&client.cache_and_http));
