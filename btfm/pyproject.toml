@@ -1,0 +1,22 @@
+# Enable wrapping the application in a Python package
+#
+# This enables easier integration with Meltano.
+[project]
+name = "btfm-server"
+version = "0.22.0"
+description = "A Discord bot that plays audio clips based on voice chat"
+readme = "../README.md"
+requires-python = ">=3.9"
+license = {file = "../LICENSE"}
+dependencies = [
+    "openai-whisper>=20230314",
+]
+
+[build-system]
+requires = ["maturin>=0.14,<0.15"]
+build-backend = "maturin"
+
+[tool.maturin]
+bindings = "bin"
+profile = "production"
+strip = false

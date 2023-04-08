@@ -15,7 +15,7 @@ version = "0.6.15"
 features = ["headers", "http1", "json", "multipart", "tower-log"]
 
 [dependencies.axum-server]
-version = "0.4.4"
+version = "0.4.7"
 features = ["tls-rustls"]
 
 [dependencies.btfm-api-structs]
@@ -82,7 +82,7 @@ version = "0.18"
 features = ["auto-initialize"]
 
 [dependencies.regex]
-version = "1.7.1"
+version = "1.7.3"
 
 [dependencies.rand]
 version = "0.8"
@@ -112,9 +112,6 @@ features=["builtin-queue", "driver", "gateway", "serenity-rustls"]
 version = "0.6.3"
 features = ["runtime-tokio-rustls", "postgres", "chrono", "migrate", "macros", "offline", "uuid"]
 
-[dependencies.tempfile]
-version = "3"
-
 [dependencies.thesaurus]
 version = "0.5.2"
 features = ["wordnet"]
@@ -132,10 +129,6 @@ version = "1.0"
 [dependencies.tokio]
 version = "1"
 features=["full"]
-
-[dependencies.tokio-tungstenite]
-version = "0.18"
-features = ["rustls"]
 
 [dependencies.tokio-stream]
 version = "0.1"
