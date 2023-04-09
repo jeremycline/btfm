@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=BTFM
+Exec=btfm-ui
+Icon=org.jcline.btfm
+Terminal=false
+Type=Application
+Categories=GTK;
+StartupNotify=true

@@ -1,0 +1,43 @@
+[package]
+name = "btfm-ui"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[dependencies.adw]
+version = "0.4.1"
+package = "libadwaita"
+features = ["v1_3"]
+
+[dependencies.btfm-api-structs]
+path = "../btfm-api-structs"
+version = "0.3"
+
+[dependencies.gtk]
+version = "0.6.4"
+package = "gtk4"
+features = ["v4_10"]
+
+[dependencies.once_cell]
+version = "1.17.1"
+
+[dependencies.reqwest]
+version = "0.11"
+features = ["json", "multipart", "stream", "blocking"]
+
+[dependencies.serde]
+version = "1"
+features = ["derive"]
+
+[dependencies.serde_json]
+version = "1"
+
+[dependencies.tokio]
+version = "1"
+features = ["fs", "rt", "macros"]
+
+[dependencies.url]
+version = "2"
+
+[build-dependencies]
+glib-build-tools = "0.17.0"

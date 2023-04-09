@@ -4,6 +4,7 @@ members = [
 	"btfm",
 	"btfm-cli",
 	"btfm-api-structs",
+	"btfm-ui",
 ]
 
 [profile.production]

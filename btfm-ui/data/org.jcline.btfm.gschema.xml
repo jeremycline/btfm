@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist gettext-domain="btfm-ui">
+	<schema id="org.jcline.btfm" path="/org/jcline/btfm/">
+	</schema>
+</schemalist>
