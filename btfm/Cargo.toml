@@ -11,7 +11,7 @@ repository = "https://github.com/jeremycline/btfm/"
 
 
 [dependencies.axum]
-version = "0.6.6"
+version = "0.6.15"
 features = ["headers", "http1", "json", "multipart", "tower-log"]
 
 [dependencies.axum-server]
