@@ -133,6 +133,9 @@ features=["full"]
 [dependencies.tokio-stream]
 version = "0.1"
 
+[dependencies.tokio-util]
+version = "0.7"
+
 [dependencies.toml]
 version = "0.7"
 
