@@ -31,6 +31,8 @@ pub enum Error {
     TokioTask(#[from] tokio::task::JoinError),
     #[error("Client request is invalid")]
     BadRequest,
+    #[error("File not found")]
+    NotFound,
     #[error("An HTTP error occurred")]
     Http(#[from] reqwest::Error),
     #[error("A Url parsing error occurred")]

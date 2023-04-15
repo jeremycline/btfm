@@ -49,6 +49,7 @@ pub fn create_router(config: &HttpApi, db: PgPool) -> Router {
                 .delete(handlers::clip::delete)
                 .put(handlers::clip::edit),
         )
+        .route("/v1/clips/:ulid/audio", get(handlers::clip::download_clip))
         .route(
             "/v1/clips/",
             get(handlers::clip::get_all).post(handlers::clip::create),
