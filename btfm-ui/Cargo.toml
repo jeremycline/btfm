@@ -32,6 +32,9 @@ features = ["derive"]
 [dependencies.serde_json]
 version = "1"
 
+[dependencies.tempfile]
+version = "3.5"
+
 [dependencies.tokio]
 version = "1"
 features = ["fs", "rt", "macros"]

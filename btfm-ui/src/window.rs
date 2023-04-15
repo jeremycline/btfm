@@ -3,7 +3,10 @@ use std::{str::FromStr, time::Duration};
 use adw::prelude::*;
 use adw::subclass::prelude::*;
 use btfm_api_structs::{Clip, Clips};
-use gtk::{gio, glib, Button, Label, ScrolledWindow, SelectionMode, StackPage};
+use gtk::{
+    gio::{self, prelude::SettingsExtManual},
+    glib, Button, Label, ScrolledWindow, SelectionMode, StackPage,
+};
 
 glib::wrapper! {
     pub struct Window(ObjectSubclass<imp::Window>)
@@ -14,9 +17,10 @@ glib::wrapper! {
 
 impl Window {
     pub fn new<P: glib::IsA<gtk::Application>>(application: &P) -> Self {
-        glib::Object::builder()
+        let window = glib::Object::builder()
             .property("application", application)
-            .build()
+            .build();
+        window
     }
 
     fn setup_settings(&self) {
@@ -42,11 +46,30 @@ impl Window {
         self.add_action(&action_connect_server)
     }
 
+    fn populate_creds(&self) {
+        let username: String = self.settings().get("username");
+        let password: String = self.settings().get("password");
+        let server_url: String = self.settings().get("server-url");
+        self.imp().server_url.set_text(&server_url);
+        self.imp().username.set_text(&username);
+        self.imp().password.set_text(&password);
+    }
+
     fn load_clips(&self) {
         let server_url = self.imp().server_url.text().to_string();
         let username = self.imp().username.text().to_string();
         let password = self.imp().password.text().to_string();
-        
+
+        self.settings()
+            .set_string("server-url", server_url.as_str())
+            .unwrap();
+        self.settings()
+            .set_string("username", username.as_str())
+            .unwrap();
+        self.settings()
+            .set_string("password", password.as_str())
+            .unwrap();
+
         // TODO: don't block the main thread, handle errors
 
         let server_url = url::Url::from_str(&server_url)
@@ -71,6 +94,12 @@ impl Window {
                 .selection_mode(SelectionMode::None)
                 .build();
 
+            clip_details_list_box.append(
+                &adw::ActionRow::builder()
+                    .title(&ulid)
+                    .subtitle("ID")
+                    .build(),
+            );
             clip_details_list_box.append(
                 &adw::ActionRow::builder()
                     .title(&clip.created_on.to_string())
@@ -99,6 +128,28 @@ impl Window {
                     .subtitle("Description")
                     .build(),
             );
+            if let Some(phrases) = clip.phrases {
+                let phrase_list_box = gtk::ListBox::builder()
+                    .selection_mode(SelectionMode::None)
+                    .tooltip_text("Phrases")
+                    .build();
+                for phrase in phrases.phrases.iter() {
+                    phrase_list_box.append(
+                        &adw::ActionRow::builder()
+                            .title(&phrase.phrase)
+                            .icon_name("notepad-symbolic")
+                            .subtitle(phrase.ulid.to_string().as_str())
+                            .build(),
+                    )
+                }
+                let scroll_window = ScrolledWindow::builder()
+                    .vexpand(true)
+                    .hexpand_set(false)
+                    .child(&phrase_list_box)
+                    .build();
+                clip_details_list_box.append(&scroll_window);
+            }
+
             let scroll_window = ScrolledWindow::builder()
                 .vexpand(true)
                 .hexpand_set(false)
@@ -175,6 +226,7 @@ mod imp {
             let obj = self.obj();
             obj.setup_settings();
             obj.setup_actions();
+            obj.populate_creds();
         }
     }
 

@@ -1,5 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <schemalist gettext-domain="btfm-ui">
-	<schema id="org.jcline.btfm" path="/org/jcline/btfm/">
+    <schema id="org.jcline.btfm" path="/org/jcline/btfm/">
+        <key name="server-url" type="s">
+            <default>"https://example.com"</default>
+            <summary>URL of the BTFM server</summary>
+        </key>
+        <key name="username" type="s">
+            <default>"user"</default>
+            <summary>Username to authenticate with the BTFM server</summary>
+        </key>
+        <key name="password" type="s">
+            <default>"password"</default>
+            <summary>Password to authenticate with the BTFM server</summary>
+        </key>
 	</schema>
 </schemalist>
