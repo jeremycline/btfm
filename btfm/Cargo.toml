@@ -82,7 +82,7 @@ version = "0.18"
 features = ["auto-initialize"]
 
 [dependencies.regex]
-version = "1.7.3"
+version = "1.8.1"
 
 [dependencies.rand]
 version = "0.8"
