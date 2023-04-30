@@ -57,4 +57,5 @@ RUN useradd --create-home btfm && \
     chown btfm:btfm -R /var/lib/btfm
 USER btfm
 RUN pipx install /tmp/*.whl
+ENV PATH="/home/btfm/.local/bin:${PATH}"
 ENTRYPOINT ["/home/btfm/.local/bin/btfm-server"]
