@@ -9,6 +9,5 @@ pub use phrase::{CreatePhrase, Phrase, Phrases};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Status {
-    pub db_version: Option<u32>,
     pub db_connections: u32,
 }

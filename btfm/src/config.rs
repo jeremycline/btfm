@@ -10,12 +10,12 @@ use url::Url;
 
 use crate::Error;
 
+const DB_NAME: &str = "btfm.sqlite";
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Config {
     /// The data directory where clips and other application data is stored
     pub data_directory: PathBuf,
-    /// The URL to the PostgreSQL database in the format "postgres://<user>:<pass>@host/database_name"
-    pub database_url: String,
     /// The Discord API token.
     pub discord_token: String,
     /// Discord Channel ID to join.
@@ -34,6 +34,16 @@ pub struct Config {
     pub random_clip_interval: u64,
 
     pub mimic_endpoint: Option<Url>,
+}
+
+impl Config {
+    pub fn database_url(&self) -> String {
+        self.data_directory
+            .join(DB_NAME)
+            .to_str()
+            .unwrap()
+            .to_string()
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -82,7 +92,6 @@ impl Default for Config {
     fn default() -> Self {
         Config {
             data_directory: PathBuf::from(r"/var/lib/btfm/"),
-            database_url: "postgres:///btfm".to_string(),
             discord_token: "Go get a Discord API token".to_string(),
             channel_id: 0,
             log_channel_id: None,

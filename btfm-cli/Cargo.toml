@@ -47,8 +47,8 @@ features = ["fs", "rt", "macros"]
 version = "0.7"
 features = ["codec"]
 
-[dependencies.ulid]
-version = "1.0.0"
+[dependencies.uuid]
+version = "1"
 features = ["serde"]
 
 [[bin]]

@@ -2,11 +2,8 @@
 //
 // Provides structures and functions for the phrases in the database
 use serde::Serialize;
-use sqlx::{types::Uuid, PgConnection};
+use sqlx::{types::Uuid, SqliteConnection};
 use tracing::instrument;
-use ulid::Ulid;
-
-use crate::uuid_serializer;
 
 /// Representation of a phrase in the database.
 ///
@@ -14,10 +11,8 @@ use crate::uuid_serializer;
 /// Phrases are associated with clips via `ClipPhrase` entries in a many-to-many relationship.
 #[derive(Clone, Debug, Serialize)]
 pub struct Phrase {
-    #[serde(serialize_with = "uuid_serializer")]
-    pub uuid: Uuid,
-    #[serde(serialize_with = "uuid_serializer")]
-    pub clip: Uuid,
+    pub uuid: String,
+    pub clip: String,
     pub phrase: String,
 }
 
@@ -41,16 +36,16 @@ impl std::fmt::Display for Phrase {
 /// All Phrases associated with the given clip ID.
 #[instrument(skip(connection))]
 pub async fn phrases_for_clip(
-    connection: &mut PgConnection,
-    clip_uuid: Uuid,
+    connection: &mut SqliteConnection,
+    clip_uuid: String,
 ) -> Result<Vec<Phrase>, crate::Error> {
     sqlx::query_as!(
         Phrase,
-        "
+        r#"
         SELECT *
         FROM clip_phrases
         WHERE clip = $1
-        ",
+        "#,
         clip_uuid
     )
     .fetch_all(&mut *connection)
@@ -61,16 +56,16 @@ pub async fn phrases_for_clip(
 /// Get a single phrase by Uuid.
 #[instrument(skip(connection))]
 pub async fn get_phrase(
-    connection: &mut PgConnection,
-    phrase_uuid: Uuid,
+    connection: &mut SqliteConnection,
+    phrase_uuid: String,
 ) -> Result<Phrase, crate::Error> {
     Ok(sqlx::query_as!(
         Phrase,
-        "
-            SELECT *
-            FROM clip_phrases
-            WHERE uuid = $1
-            ",
+        r#"
+        SELECT *
+        FROM clip_phrases
+        WHERE uuid = $1
+        "#,
         phrase_uuid,
     )
     .fetch_one(&mut *connection)
@@ -80,17 +75,17 @@ pub async fn get_phrase(
 /// Add a phrase to a clip.
 #[instrument(skip(connection))]
 pub async fn add_phrase(
-    connection: &mut PgConnection,
-    clip: Uuid,
+    connection: &mut SqliteConnection,
+    clip: String,
     phrase: &str,
 ) -> Result<Phrase, crate::Error> {
     let phrase = phrase.to_lowercase();
-    let uuid = Uuid::from_u128(Ulid::new().0);
+    let uuid = Uuid::new_v4().to_string();
     sqlx::query!(
-        "
+        r#"
         INSERT INTO clip_phrases (uuid, clip, phrase)
         VALUES ($1, $2, $3)
-        ",
+        "#,
         uuid,
         clip,
         phrase,
@@ -103,13 +98,13 @@ pub async fn add_phrase(
 
 /// List all known phrases in the database.
 #[instrument(skip(connection))]
-pub async fn list_phrases(connection: &mut PgConnection) -> Result<Vec<Phrase>, crate::Error> {
+pub async fn list_phrases(connection: &mut SqliteConnection) -> Result<Vec<Phrase>, crate::Error> {
     sqlx::query_as!(
         Phrase,
-        "
+        r#"
         SELECT *
         FROM clip_phrases;
-        "
+        "#
     )
     .fetch_all(&mut *connection)
     .await
@@ -123,16 +118,16 @@ pub async fn list_phrases(connection: &mut PgConnection) -> Result<Vec<Phrase>, 
 /// The phrase that was deleted.
 #[instrument(skip(connection))]
 pub async fn remove_phrase(
-    connection: &mut PgConnection,
-    uuid: Uuid,
+    connection: &mut SqliteConnection,
+    uuid: String,
 ) -> Result<Phrase, crate::Error> {
     let phrase = sqlx::query_as!(
         Phrase,
-        "
-            SELECT *
-            FROM clip_phrases
-            WHERE uuid = $1
-            ",
+        r#"
+        SELECT *
+        FROM clip_phrases
+        WHERE uuid = $1
+        "#,
         uuid,
     )
     .fetch_one(&mut *connection)
@@ -140,9 +135,9 @@ pub async fn remove_phrase(
 
     sqlx::query!(
         "
-            DELETE FROM clip_phrases
-            WHERE uuid = $1
-            ",
+        DELETE FROM clip_phrases
+        WHERE uuid = $1
+        ",
         uuid,
     )
     .execute(&mut *connection)

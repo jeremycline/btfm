@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use serenity::prelude::*;
-use sqlx::postgres::PgPoolOptions;
 use tokio::sync::mpsc;
 
 use crate::config::Config;
@@ -20,7 +19,7 @@ pub struct BtfmData {
     ssrc_map: HashMap<u64, u32>,
     // How many times the given user has joined the channel so we can give them rejoin messages.
     pub user_history: HashMap<u64, u32>,
-    db: sqlx::PgPool,
+    db: sqlx::SqlitePool,
     pub status_report: Option<String>,
     pub http_client: reqwest::Client,
 }
@@ -33,9 +32,8 @@ impl BtfmData {
             .get()
             .expect("CONFIG needs to be initialized before starting the transcriber")
             .to_owned();
-        let db = PgPoolOptions::new()
-            .max_connections(10)
-            .connect(&config.database_url)
+        let db = sqlx::sqlite::SqlitePoolOptions::new()
+            .connect(&config.database_url())
             .await
             .expect("Unable to connect to database");
 

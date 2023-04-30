@@ -14,7 +14,7 @@ use tokio::sync::{mpsc, oneshot};
 use tracing::Instrument;
 
 use crate::config::Config;
-use crate::transcode::whisper_transcode;
+use crate::transcode::{discord_to_whisper, whisper_transcode};
 
 const WHISPER: &str = include_str!("transcribe.py");
 
@@ -24,6 +24,10 @@ pub enum TranscriptionRequest {
         audio: mpsc::Receiver<Vec<i16>>,
         respond_to: oneshot::Sender<String>,
         span: tracing::Span,
+    },
+    File {
+        path: PathBuf,
+        respond_to: oneshot::Sender<String>,
     },
     Shutdown,
 }
@@ -64,9 +68,20 @@ impl Transcriber {
 
         text_receiver
     }
+
+    pub async fn file(&self, path: PathBuf) -> oneshot::Receiver<String> {
+        let (respond_to, text_receiver) = oneshot::channel();
+
+        let request = TranscriptionRequest::File { path, respond_to };
+
+        let _ = self.sender.send(request).await;
+
+        text_receiver
+    }
 }
 
 enum Request {
+    File(PathBuf, oneshot::Sender<String>),
     Raw(Vec<f32>, oneshot::Sender<String>),
     Shutdown,
 }
@@ -123,6 +138,16 @@ impl TranscriberWorker {
                             tracing::error!("Failed to send STT result back to the caller.");
                         }
                     }
+                    Request::File(audio, sender) => {
+                        tracing::debug!("Processing new transcription request");
+                        let result = transcriber
+                            .call1((audio,))
+                            .and_then(|r| r.extract())
+                            .unwrap_or_default();
+                        if sender.send(result).is_err() {
+                            tracing::error!("Failed to send STT result back to the caller.");
+                        }
+                    }
                     Request::Shutdown => {
                         tracing::info!("Shutting down the transcriber");
                         break;
@@ -158,7 +183,7 @@ impl TranscriberWorker {
                                 }
                             }
 
-                            let bin = whisper_transcode(bin).await;
+                            let bin = whisper_transcode(discord_to_whisper(), bin).await;
 
                             if transcriber
                                 .send(Request::Raw(bin, respond_to))
@@ -170,6 +195,31 @@ impl TranscriberWorker {
                         }
                         .instrument(span),
                     );
+                }
+                TranscriptionRequest::File { path, respond_to } => {
+                    let transcriber = self.transcribe_channel.clone();
+                    tokio::spawn(async move {
+                        //let mut file = File::open(path).await.unwrap();
+                        //let mut bin = Vec::new();
+                        //file.read_to_end(&mut bin).await.unwrap();
+
+                        //let bin = whisper_transcode(container_to_whisper(), bin).await;
+
+                        //if transcriber
+                        //    .send(Request::Raw(bin, respond_to))
+                        //    .await
+                        //    .is_err()
+                        //{
+                        //    tracing::error!("The transcriber thread is gone?");
+                        //}
+                        if transcriber
+                            .send(Request::File(path, respond_to))
+                            .await
+                            .is_err()
+                        {
+                            tracing::error!("The transcriber thread is gone?");
+                        }
+                    });
                 }
                 TranscriptionRequest::Shutdown => {
                     if self

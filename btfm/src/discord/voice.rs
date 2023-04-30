@@ -18,7 +18,7 @@ use songbird::{
 };
 use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, error, info, trace, warn, Instrument};
-use ulid::Ulid;
+use uuid::Uuid;
 
 use super::{BtfmData, User};
 use crate::db;
@@ -33,7 +33,10 @@ pub async fn hello_there(event_name: &str) -> Option<Input> {
         match songbird::ffmpeg(&path).await {
             Ok(source) => Some(source),
             Err(error) => {
-                tracing::error!(?path, ?error, "Failed to create a source from the file");
+                tracing::error!(
+                    ?error,
+                    "Failed to create a source from the file; is ffmpeg on the PATH?"
+                );
                 None
             }
         }
@@ -145,8 +148,7 @@ impl VoiceEventHandler for Receiver {
                 if let Some(audio) = audio {
                     if user.transcriber.is_none() {
                         let (audio_sender, audio_receiver) = mpsc::channel(2048);
-                        let span =
-                            tracing::info_span!("stream", id = %Ulid::new(), ssrc = %packet.ssrc);
+                        let span = tracing::info_span!("stream", id = %Uuid::new_v4(), ssrc = %packet.ssrc);
                         info!(parent: &span, "Beginning new transcription stream");
                         let text_receiver =
                             transcriber.stream(audio_receiver).instrument(span).await;
@@ -269,7 +271,7 @@ async fn handle_text(
     let clip = clips.into_iter().choose(&mut rand::thread_rng());
     if let Some(mut clip) = clip {
         db::mark_played(&mut conn, &mut clip).await.unwrap();
-        let phrases = db::phrases_for_clip(&mut conn, clip.uuid)
+        let phrases = db::phrases_for_clip(&mut conn, clip.uuid.clone())
             .await
             .unwrap_or_else(|_| vec![])
             .iter()
@@ -283,7 +285,8 @@ async fn handle_text(
         );
         btfm.status_report = Some(format!(
             "The last clip that was played, described as \"{}\", is triggered by the phrases {}.",
-            clip.description, phrases
+            clip.description.unwrap_or_default(),
+            phrases
         ));
         log_event_to_channel(
             btfm.config.log_channel_id.map(ChannelId),

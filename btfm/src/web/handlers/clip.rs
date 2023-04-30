@@ -4,17 +4,18 @@ use axum::{
     Json,
 };
 use btfm_api_structs::{Clip, ClipUpdated, ClipUpload, Clips};
-use sqlx::{types::Uuid, PgPool};
+use sqlx::{types::Uuid, SqlitePool};
 use tokio_util::io::ReaderStream;
 use tracing::{info, instrument};
-use ulid::Ulid;
 
-use crate::db;
 use crate::web::serialization::load_phrases;
+use crate::{db, transcribe::Transcriber};
 
 /// List clips known to BTFM
 #[instrument(skip(db_pool))]
-pub async fn get_all(Extension(db_pool): Extension<PgPool>) -> Result<Json<Clips>, crate::Error> {
+pub async fn get_all(
+    Extension(db_pool): Extension<SqlitePool>,
+) -> Result<Json<Clips>, crate::Error> {
     let mut clips = vec![];
     let mut conn = db_pool.begin().await?;
     for clip in db::clips_list(&mut conn).await? {
@@ -33,10 +34,10 @@ pub async fn get_all(Extension(db_pool): Extension<PgPool>) -> Result<Json<Clips
 /// Get a single clip by ID.
 #[instrument(skip(db_pool))]
 pub async fn get(
-    Extension(db_pool): Extension<PgPool>,
-    Path(ulid): Path<Ulid>,
+    Extension(db_pool): Extension<SqlitePool>,
+    Path(uuid): Path<Uuid>,
 ) -> Result<Json<Clip>, crate::Error> {
-    let uuid = Uuid::from_u128(ulid.0);
+    let uuid = uuid.to_string();
     let mut conn = db_pool.begin().await?;
     let mut clip: Clip = db::get_clip(&mut conn, uuid).await?.into();
     load_phrases(&mut clip, &mut conn).await?;
@@ -44,12 +45,12 @@ pub async fn get(
 }
 
 pub async fn download_clip(
-    Extension(db_pool): Extension<PgPool>,
-    Path(ulid): Path<Ulid>,
+    Extension(db_pool): Extension<SqlitePool>,
+    Path(uuid): Path<Uuid>,
 ) -> Result<impl IntoResponse, crate::Error> {
-    let uuid = Uuid::from_u128(ulid.0);
+    let uuid = uuid.to_string();
     let mut conn = db_pool.begin().await?;
-    let clip: Clip = db::get_clip(&mut conn, uuid).await?.into();
+    let clip: Clip = db::get_clip(&mut conn, uuid).await.unwrap().into();
     let config = crate::CONFIG.get().expect("Initialize the config");
     let clip_path = config.data_directory.join(&clip.audio_file);
 
@@ -80,24 +81,29 @@ pub async fn download_clip(
 /// This accepts a multipart form consisting of two parts. The first part is a JSON object
 /// with clip metadata and optional phrases to associate with it. The second part is the file
 /// itself.
-#[instrument(skip(db_pool))]
+#[instrument(skip(db_pool, transcriber))]
 pub async fn create(
-    Extension(db_pool): Extension<PgPool>,
+    Extension(db_pool): Extension<SqlitePool>,
+    Extension(transcriber): Extension<Transcriber>,
     mut form: Multipart,
 ) -> Result<Json<Clip>, crate::Error> {
     let mut clip_metadata = None;
     let mut filename = None;
     let mut clip_data = None;
-    while let Some(field) = form.next_field().await.unwrap() {
-        match field.name().unwrap() {
+    while let Some(field) = form.next_field().await? {
+        match field.name().ok_or(crate::Error::BadRequest)? {
             "clip_metadata" => {
-                clip_metadata =
-                    Some(serde_json::from_str::<ClipUpload>(&field.text().await.unwrap()).unwrap());
+                clip_metadata = Some(serde_json::from_str::<ClipUpload>(&field.text().await?)?);
             }
             "clip" => {
                 // Validate and write to filesystem
-                filename = Some(field.file_name().unwrap().to_owned());
-                clip_data = Some(field.bytes().await.unwrap());
+                filename = Some(
+                    field
+                        .file_name()
+                        .ok_or(crate::Error::BadRequest)?
+                        .to_owned(),
+                );
+                clip_data = Some(field.bytes().await?);
             }
             _ => {
                 info!(?field, "Ignoring unknown field");
@@ -107,9 +113,15 @@ pub async fn create(
     match (clip_metadata, clip_data, filename) {
         (Some(metadata), Some(data), Some(filename)) => {
             let mut transaction = db_pool.begin().await?;
-            let mut clip: Clip = db::add_clip(&mut transaction, data.to_vec(), metadata, &filename)
-                .await?
-                .into();
+            let mut clip: Clip = db::add_clip(
+                &mut transaction,
+                data.to_vec(),
+                metadata,
+                &filename,
+                transcriber,
+            )
+            .await?
+            .into();
             load_phrases(&mut clip, &mut transaction).await?;
             transaction.commit().await?;
             Ok(clip.into())
@@ -120,14 +132,14 @@ pub async fn create(
 
 #[instrument(skip(db_pool))]
 pub async fn edit(
-    Extension(db_pool): Extension<PgPool>,
-    Path(ulid): Path<Ulid>,
+    Extension(db_pool): Extension<SqlitePool>,
+    Path(uuid): Path<Uuid>,
     Json(clip_metadata): Json<ClipUpload>,
 ) -> Result<Json<ClipUpdated>, crate::Error> {
-    let uuid = Uuid::from_u128(ulid.0);
+    let uuid = uuid.to_string();
     let mut transaction = db_pool.begin().await?;
 
-    let mut old_clip: Clip = db::get_clip(&mut transaction, uuid).await?.into();
+    let mut old_clip: Clip = db::get_clip(&mut transaction, uuid.clone()).await?.into();
     load_phrases(&mut old_clip, &mut transaction).await?;
 
     let description = match clip_metadata.description.is_empty() {
@@ -137,7 +149,7 @@ pub async fn edit(
 
     db::update_clip(
         &mut transaction,
-        uuid,
+        uuid.clone(),
         description,
         &clip_metadata.phrases.unwrap_or_default(),
     )
@@ -152,11 +164,12 @@ pub async fn edit(
 
 #[instrument(skip(db_pool))]
 pub async fn delete(
-    Extension(db_pool): Extension<PgPool>,
-    Path(ulid): Path<Ulid>,
+    Extension(db_pool): Extension<SqlitePool>,
+    Path(uuid): Path<Uuid>,
 ) -> Result<Json<Clip>, crate::Error> {
-    let uuid = Uuid::from_u128(ulid.0);
-    let mut conn = db_pool.begin().await?;
-    let clip: Clip = db::remove_clip(&mut conn, uuid).await?.into();
+    let uuid = uuid.to_string();
+    let mut transaction = db_pool.begin().await?;
+    let clip: Clip = db::remove_clip(&mut transaction, uuid).await?.into();
+    transaction.commit().await?;
     Ok(clip.into())
 }

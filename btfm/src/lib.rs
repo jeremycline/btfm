@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 use once_cell::sync::OnceCell;
-use serde::Serializer;
-use sqlx::types::Uuid;
 use thiserror::Error as ThisError;
 
 pub static CONFIG: OnceCell<config::Config> = OnceCell::new();
@@ -29,6 +27,8 @@ pub enum Error {
     Server(std::io::Error),
     #[error("Tokio task failed: {0}")]
     TokioTask(#[from] tokio::task::JoinError),
+    #[error("Tokio channel failed: {0}")]
+    TokioOneshot(#[from] tokio::sync::oneshot::error::RecvError),
     #[error("Client request is invalid")]
     BadRequest,
     #[error("File not found")]
@@ -39,14 +39,12 @@ pub enum Error {
     ParseUrl(#[from] url::ParseError),
     #[error("An unexpected error occurred from the Python module: {0}")]
     Python(#[from] pyo3::PyErr),
-}
-
-/// Serializer for UUIDs
-pub fn uuid_serializer<S>(uuid: &Uuid, s: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    s.serialize_str(&uuid.to_string())
+    #[error("Uuid parse error: {0}")]
+    Uuid(#[from] uuid::Error),
+    #[error("A Multipart error occurred: {0}")]
+    Axum(#[from] axum::extract::multipart::MultipartError),
+    #[error("A JSON serialization error occurred: {0}")]
+    Json(#[from] serde_json::Error),
 }
 
 pub mod cli;

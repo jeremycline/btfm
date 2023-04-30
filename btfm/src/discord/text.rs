@@ -10,7 +10,7 @@ use serenity::{
     prelude::*,
 };
 use songbird::{Call, CoreEvent};
-use sqlx::PgPool;
+use sqlx::SqlitePool;
 use tracing::{debug, error, info, warn};
 
 use crate::db::Clip;
@@ -23,7 +23,7 @@ impl TypeMapKey for HttpClient {
     type Value = Arc<serenity::CacheAndHttp>;
 }
 
-async fn play_clip_at_interval(call: Arc<Mutex<Call>>, db_pool: PgPool) {
+async fn play_clip_at_interval(call: Arc<Mutex<Call>>, db_pool: SqlitePool) {
     info!("Starting task to play clips an interval");
     let config = crate::CONFIG
         .get()

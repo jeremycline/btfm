@@ -6,7 +6,7 @@ use crate::Phrases;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Clip {
     /// The unique identifier for the clip and primary key for the table.
-    pub ulid: ulid::Ulid,
+    pub uuid: String,
     /// The time when the clip was added to the database.
     pub created_on: NaiveDateTime,
     /// The last time the clip was played; this is equal to `created_on` when created.
@@ -31,6 +31,7 @@ pub struct Clips {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ClipUpload {
+    pub title: String,
     pub description: String,
     pub phrases: Option<Vec<String>>,
 }

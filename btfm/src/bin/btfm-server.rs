@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-use std::fs;
 use std::sync::Arc;
+use std::{fs, str::FromStr};
 
 use clap::Parser;
 use serenity::{client::Client, framework::StandardFramework, prelude::*};
 use songbird::{driver::DecodeMode, SerenityInit, Songbird};
-use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
+use sqlx::{
+    sqlite::{SqliteConnectOptions, SqlitePoolOptions},
+    ConnectOptions, Pool, Sqlite,
+};
 use tracing::{debug, error, info};
 
 use btfm::discord::{
@@ -25,10 +28,22 @@ async fn main() {
         .set(opts.config.clone())
         .expect("Failed to set config global");
 
+    if !opts.config.data_directory.exists() {
+        std::fs::DirBuilder::new()
+            .recursive(true)
+            .create(&opts.config.data_directory)
+            .unwrap();
+    }
+
     debug!("Starting database connection to perform the database migration");
-    let db_pool = match PgPoolOptions::new()
-        .max_connections(32)
-        .connect(&opts.config.database_url)
+    let _ = SqliteConnectOptions::from_str(&opts.config.database_url())
+        .unwrap()
+        .create_if_missing(true)
+        .connect()
+        .await
+        .unwrap();
+    let db_pool = match SqlitePoolOptions::new()
+        .connect(&opts.config.database_url())
         .await
     {
         Ok(pool) => match MIGRATIONS.run(&pool).await {
@@ -50,9 +65,9 @@ async fn main() {
     }
 }
 
-async fn process_command(opts: cli::Btfm, db_pool: Pool<Postgres>) -> Result<(), Error> {
+async fn process_command(opts: cli::Btfm, db_pool: Pool<Sqlite>) -> Result<(), Error> {
     match opts.command {
-        cli::Command::Run {} => {
+        cli::Command::Discord {} => {
             gstreamer::init()?;
 
             let framework = StandardFramework::new();
@@ -68,10 +83,11 @@ async fn process_command(opts: cli::Btfm, db_pool: Pool<Postgres>) -> Result<(),
                 .await?;
 
             let http_handle = axum_server::Handle::new();
-            {
+            let transcriber = {
                 let mut data = client.data.write().await;
                 let btfm_data = BtfmData::new().await;
                 let transcriber = btfm_data.transcriber.clone();
+                let web_transcriber = btfm_data.transcriber.clone();
                 let handle = http_handle.clone();
                 data.insert::<HttpClient>(Arc::clone(&client.cache_and_http));
                 data.insert::<BtfmData>(Arc::new(Mutex::new(btfm_data)));
@@ -86,11 +102,12 @@ async fn process_command(opts: cli::Btfm, db_pool: Pool<Postgres>) -> Result<(),
                     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                     std::process::exit(1);
                 });
-            }
+                web_transcriber
+            };
             let discord_client_handle = tokio::spawn(async move { client.start().await });
 
             let http_api = opts.config.http_api.clone();
-            let router = btfm::web::create_router(&http_api, db_pool);
+            let router = btfm::web::create_router(&http_api, db_pool, transcriber);
             let server_handle = match (http_api.tls_certificate, http_api.tls_key) {
                 (None, None) => {
                     info!("Starting HTTP server on {:?}", &http_api.url);
@@ -133,7 +150,7 @@ async fn process_command(opts: cli::Btfm, db_pool: Pool<Postgres>) -> Result<(),
                 if !file.exists() {
                     println!("{clip}");
                     if clean {
-                        db::remove_clip(&mut conn, clip.uuid).await?;
+                        db::remove_clip(&mut conn, clip.uuid.clone()).await?;
                     }
                 }
             }
@@ -157,6 +174,59 @@ async fn process_command(opts: cli::Btfm, db_pool: Pool<Postgres>) -> Result<(),
                     }
                 }
             }
+
+            Ok(())
+        }
+        cli::Command::Web {} => {
+            gstreamer::init()?;
+
+            let http_handle = axum_server::Handle::new();
+            let transcriber = {
+                let handle = http_handle.clone();
+                let btfm_data = BtfmData::new().await;
+                let transcriber = btfm_data.transcriber.clone();
+                let web_transcriber = btfm_data.transcriber;
+
+                tokio::spawn(async move {
+                    let _shutdown_signal = tokio::signal::ctrl_c().await;
+                    tracing::info!("Shutdown signal received; beginning graceful shutdown.");
+                    transcriber.shutdown().await;
+                    handle.graceful_shutdown(Some(std::time::Duration::from_secs(15)));
+                    // TODO figure out why the transcriber still blocks shutdown.
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                    std::process::exit(1);
+                });
+                web_transcriber
+            };
+            let http_api = opts.config.http_api.clone();
+            let router = btfm::web::create_router(&http_api, db_pool, transcriber);
+            match (http_api.tls_certificate, http_api.tls_key) {
+                (None, None) => {
+                    info!("Starting HTTP server on {:?}", &http_api.url);
+                    tokio::spawn(async move {
+                        axum_server::bind(http_api.url)
+                            .handle(http_handle)
+                            .serve(router.into_make_service())
+                            .await
+                            .map_err(Error::Server)
+                    })
+                }
+                (Some(cert), Some(key)) => tokio::spawn(async move {
+                    info!("Starting HTTPS server on {:?}", &http_api.url);
+                    let tls_config =
+                        axum_server::tls_rustls::RustlsConfig::from_pem_file(cert, key).await?;
+                    axum_server::bind_rustls(http_api.url, tls_config)
+                        .handle(http_handle)
+                        .serve(router.into_make_service())
+                        .await
+                        .map_err(Error::Server)
+                }),
+                _ => return Err(Error::ConfigValueError(
+                    "'tls_certificate' and 'tls_key' must both be set or neither should be set."
+                        .into(),
+                )),
+            }
+            .await??;
 
             Ok(())
         }

@@ -40,5 +40,6 @@ pub enum Command {
         clean: bool,
     },
     /// Run the bot service
-    Run {},
+    Discord {},
+    Web {},
 }

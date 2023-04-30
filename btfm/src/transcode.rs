@@ -8,8 +8,8 @@ use gstreamer::traits::GstBinExt;
 use tracing::instrument;
 
 /// Convert Discord audio to a format we can send to Whisper.
-pub(crate) fn whisper_pipeline() -> gstreamer::Pipeline {
-    let pipeline = gstreamer::Pipeline::new(Some("whisper"));
+pub(crate) fn discord_to_whisper() -> gstreamer::Pipeline {
+    let pipeline = gstreamer::Pipeline::new(Some("discord-to-whisper"));
 
     let appsrc = gstreamer_app::AppSrc::builder()
         .name("whisper-appsrc")
@@ -62,8 +62,7 @@ pub(crate) fn whisper_pipeline() -> gstreamer::Pipeline {
 }
 
 #[instrument(skip_all)]
-pub(crate) async fn whisper_transcode(data: Vec<u8>) -> Vec<f32> {
-    let pipeline = whisper_pipeline();
+pub(crate) async fn whisper_transcode(pipeline: gstreamer::Pipeline, data: Vec<u8>) -> Vec<f32> {
     let mut bus = pipeline
         .bus()
         .expect("The pipeline always has a bus")

@@ -7,7 +7,7 @@ use reqwest::{multipart, Body, Url};
 use thiserror::Error as ThisError;
 use tokio::fs::File;
 use tokio_util::codec::{BytesCodec, FramedRead};
-use ulid::Ulid;
+use uuid::Uuid;
 
 const USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
 
@@ -58,7 +58,10 @@ pub enum ClipCommand {
         /// A phrase to trigger the new clip
         #[arg(short, long)]
         phrases: Option<Vec<String>>,
-        /// A short description of the audio clip
+        /// The clip title; used in the user interface
+        #[arg()]
+        title: String,
+        /// A description of the audio clip
         #[arg()]
         description: String,
         /// The filename of the clip.
@@ -72,7 +75,7 @@ pub enum ClipCommand {
     Edit {
         /// The clip ID (from "clip list")
         #[arg()]
-        clip_id: Ulid,
+        clip_id: Uuid,
         /// A short description of the audio clip
         #[arg(short, long)]
         description: Option<String>,
@@ -80,13 +83,18 @@ pub enum ClipCommand {
         #[arg(short, long)]
         phrases: Option<Vec<String>>,
     },
+    Show {
+        /// The clip ID (from "clip list")
+        #[arg()]
+        clip_id: Uuid,
+    },
     /// List clips in the database
     List {},
     /// Remove clips from the database
     Remove {
         /// The clip ID (from "clip list")
         #[clap()]
-        clip_id: Ulid,
+        clip_id: Uuid,
     },
 }
 
@@ -96,7 +104,7 @@ pub enum PhraseCommand {
     Add {
         /// The clip ID (from "clip list")
         #[clap()]
-        clip_id: Ulid,
+        clip_id: Uuid,
         /// The phrase to associate with the clip
         #[clap()]
         phrase: String,
@@ -141,7 +149,7 @@ async fn main() {
 async fn process_command(opts: Cli) -> Result<(), Error> {
     let client = reqwest::ClientBuilder::new()
         .user_agent(USER_AGENT)
-        .timeout(Duration::from_secs(30))
+        .timeout(Duration::from_secs(120))
         .build()
         .expect("Unable to create HTTP client");
 
@@ -151,6 +159,7 @@ async fn process_command(opts: Cli) -> Result<(), Error> {
                 description,
                 file,
                 phrases,
+                title,
             } => {
                 let url = opts.url.join("/v1/clips/")?;
                 let file_name = file
@@ -165,6 +174,7 @@ async fn process_command(opts: Cli) -> Result<(), Error> {
                     multipart::Part::stream_with_length(Body::wrap_stream(clip_stream), clip_len)
                         .file_name(file_name);
                 let clip_metadata = serde_json::to_string(&ClipUpload {
+                    title,
                     description,
                     phrases,
                 })?;
@@ -204,6 +214,7 @@ async fn process_command(opts: Cli) -> Result<(), Error> {
                 let endpoint = format!("/v1/clips/{clip_id}");
                 let url = opts.url.join(&endpoint)?;
                 let json = ClipUpload {
+                    title: "".into(),
                     description: description.unwrap_or_default(),
                     phrases,
                 };
@@ -233,6 +244,23 @@ async fn process_command(opts: Cli) -> Result<(), Error> {
 
                 Ok(())
             }
+            ClipCommand::Show { clip_id } => {
+                let endpoint = format!("/v1/clips/{clip_id}");
+                let url = opts.url.join(&endpoint)?;
+                let response = client
+                    .get(url)
+                    .basic_auth(opts.user, Some(opts.password))
+                    .send()
+                    .await
+                    .map(|resp| resp.error_for_status())??;
+                let response = response.json::<Clip>().await?;
+                let clips = Clips {
+                    items: 1,
+                    clips: vec![response],
+                };
+                display_clips(&clips);
+                Ok(())
+            }
         },
         Command::Phrase(subcommand) => match subcommand {
             PhraseCommand::List {} => {
@@ -253,7 +281,7 @@ async fn process_command(opts: Cli) -> Result<(), Error> {
                     .post(url)
                     .basic_auth(opts.user, Some(opts.password))
                     .json(&CreatePhrase {
-                        clip: clip_id,
+                        clip: clip_id.to_string(),
                         phrase,
                     })
                     .send()
@@ -279,7 +307,7 @@ fn display_clips(clips: &Clips) {
     ]));
     for clip in clips.clips.iter() {
         table.add_row(prettytable::Row::new(vec![
-            prettytable::Cell::new(clip.ulid.to_string().as_str()),
+            prettytable::Cell::new(clip.uuid.to_string().as_str()),
             prettytable::Cell::new(clip.created_on.trunc_subsecs(0).to_string().as_str()),
             prettytable::Cell::new(clip.last_played.trunc_subsecs(0).to_string().as_str()),
             prettytable::Cell::new(clip.plays.to_string().as_str()),
@@ -293,8 +321,14 @@ fn display_clips(clips: &Clips) {
             prettytable::Cell::new(
                 clip.phrases
                     .as_ref()
-                    .map(|p| p.items)
-                    .unwrap_or(0)
+                    .map(|p| {
+                        p.phrases
+                            .iter()
+                            .map(|phrase| phrase.phrase.clone())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    })
+                    .unwrap_or("None".to_string())
                     .to_string()
                     .as_str(),
             ),

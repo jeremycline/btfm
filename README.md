@@ -16,22 +16,6 @@ plays audio clips into the channel in response.
 You'll need to register a bot with Discord. Go to [the Developer application
 page](https://discord.com/developers/applications) and create an application.
 
-### PostgreSQL
-
-BTFM uses a PostgreSQL database to store audio clip metadata. Install PostgreSQL and create a database. For example:
-
-```
-sudo apt install postgresql postgresql-contrib
-sudo systemctl restart postgresql.service
-sudo -u postgres createuser btfm
-sudo -u postgres createdb btfm
-sudo -u postgres psql -c "ALTER USER btfm PASSWORD 'password';"
-sudo -u postgres psql -c "ALTER DATABASE btfm OWNER to btfm;"
-```
-
-The `btfm-server` service will create the database schema when it connects. Any migrations required will also
-be run automatically on updates.
-
 ### Configuration
 
 Create a user for the bot:
@@ -48,8 +32,6 @@ An example configuration file:
 # the uploaded audio clips and "tts_cache" stores any text-to-speech audio it creates.
 # The "tts_cache" directory can be safely removed if it grows too large.
 data_directory = "/var/lib/btfm/"
-# The database created in the prior step; substitute the password as necessary.
-database_url = 'postgres://btfm:password@localhost/btfm'
 # This is the Discord API token you got during the Discord registration step.
 discord_token = 'your discord token here'
 # The channel to join when someone enters; this is available by enabling "Developer Mode"
