@@ -9,6 +9,9 @@ documentation = "https://docs.rs/btfm/"
 readme = "../README.md"
 repository = "https://github.com/jeremycline/btfm/"
 
+[dependencies.anyhow]
+version = "1.0.71"
+features = ["backtrace"]
 
 [dependencies.axum]
 version = "0.6.18"
@@ -82,7 +85,7 @@ version = "0.18"
 features = ["auto-initialize"]
 
 [dependencies.regex]
-version = "1.8.1"
+version = "1.8.3"
 
 [dependencies.rand]
 version = "0.8"

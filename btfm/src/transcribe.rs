@@ -14,7 +14,7 @@ use tokio::sync::{mpsc, oneshot};
 use tracing::Instrument;
 
 use crate::config::Config;
-use crate::transcode::{discord_to_whisper, whisper_transcode};
+use crate::transcode::discord_to_whisper;
 
 const WHISPER: &str = include_str!("transcribe.py");
 
@@ -183,7 +183,7 @@ impl TranscriberWorker {
                                 }
                             }
 
-                            let bin = whisper_transcode(discord_to_whisper(), bin).await;
+                            let bin = discord_to_whisper(bin).await.unwrap();
 
                             if transcriber
                                 .send(Request::Raw(bin, respond_to))
