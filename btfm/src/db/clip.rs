@@ -36,18 +36,14 @@ pub struct Clip {
 
 impl std::fmt::Display for Clip {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let description = match &self.description {
-            Some(d) => d.to_owned(),
-            None => "None".to_string(),
-        };
         let speech_detected = match &self.speech_detected {
             Some(s) => s.to_owned(),
             None => "None".to_string(),
         };
         write!(
             f,
-            "Clip ID {}\n\tDetected speech: {}\n\tDescription: {}\n\tFile: {}\n",
-            self.uuid, speech_detected, description, self.audio_file
+            "Clip ID {}\n\tDetected speech: {}\n\tTitle: {}\n\tFile: {}\n",
+            self.uuid, speech_detected, self.title, self.original_file_name
         )
     }
 }
@@ -60,6 +56,8 @@ impl From<Clip> for ApiClip {
             last_played: clip.last_played,
             plays: clip.plays,
             speech_detected: clip.speech_detected.unwrap_or_default(),
+            title: clip.title,
+            original_file_name: clip.original_file_name,
             description: clip.description.unwrap_or_default(),
             audio_file: clip.audio_file,
             phrases: None,

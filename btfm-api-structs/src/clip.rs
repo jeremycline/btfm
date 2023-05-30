@@ -15,10 +15,14 @@ pub struct Clip {
     pub plays: i64,
     /// The output of speech-to-text on the `audio_file`, optionally used as a matching phrase.
     pub speech_detected: String,
+    /// A short description of the clip.
+    pub title: String,
     /// A description of the clip for human consumption.
     pub description: String,
     /// Path to the audio file, relative to the BTFM_DATA_DIR.
     pub audio_file: String,
+    /// The name of the file when it was uploaded.
+    pub original_file_name: String,
     /// Phrases associated with the clip.
     pub phrases: Option<Phrases>,
 }
