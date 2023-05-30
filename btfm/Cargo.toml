@@ -18,7 +18,7 @@ version = "0.6.18"
 features = ["headers", "http1", "json", "multipart", "tower-log"]
 
 [dependencies.axum-server]
-version = "0.4.7"
+version = "0.5"
 features = ["tls-rustls"]
 
 [dependencies.btfm-api-structs]
