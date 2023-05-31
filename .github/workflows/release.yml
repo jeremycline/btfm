@@ -54,20 +54,9 @@ jobs:
             gstreamer1.0-plugins-good \
             gstreamer1.0-plugins-bad \
             gstreamer1.0-plugins-ugly \
-            libunwind-dev \
             python3 \
             ffmpeg \
-            postgresql \
-            postgresql-contrib
-          sudo systemctl restart postgresql.service
-          sudo -u postgres createuser btfm
-          sudo -u postgres createdb btfm
-          sudo -u postgres psql -c "ALTER USER btfm PASSWORD 'password';"
-          sudo -u postgres psql -c "ALTER DATABASE btfm OWNER to btfm;"
-          export DATABASE_URL=postgres://btfm:password@localhost/btfm
-          echo "DATABASE_URL=$DATABASE_URL" >> $GITHUB_ENV
-          cargo install sqlx-cli
-          cargo sqlx database setup --source btfm/migrations/
+            libunwind-dev
           cargo install cargo-edit
           pip install openai-whisper
 
