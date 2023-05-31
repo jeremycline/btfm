@@ -62,7 +62,7 @@ impl BtfmData {
 
 /// Represents an active user in a voice channel.
 struct User {
-    transcriber: Option<mpsc::Sender<Vec<i16>>>,
+    transcriber: Option<mpsc::Sender<bytes::Bytes>>,
     speaking: bool,
 }
 

@@ -21,7 +21,7 @@ const WHISPER: &str = include_str!("transcribe.py");
 #[derive(Debug)]
 pub enum TranscriptionRequest {
     Stream {
-        audio: mpsc::Receiver<Vec<i16>>,
+        audio: mpsc::Receiver<bytes::Bytes>,
         respond_to: oneshot::Sender<String>,
         span: tracing::Span,
     },
@@ -55,7 +55,7 @@ impl Transcriber {
     /// Stream audio to the transcriber and receive a stream of text back
     ///
     /// Audio is expected to be stereo signed 16 bit PCM at 48khz
-    pub async fn stream(&self, audio: mpsc::Receiver<Vec<i16>>) -> oneshot::Receiver<String> {
+    pub async fn stream(&self, audio: mpsc::Receiver<bytes::Bytes>) -> oneshot::Receiver<String> {
         let (respond_to, text_receiver) = oneshot::channel();
 
         let request = TranscriptionRequest::Stream {
@@ -169,21 +169,14 @@ impl TranscriberWorker {
         while let Some(request) = self.receiver.recv().await {
             match request {
                 TranscriptionRequest::Stream {
-                    mut audio,
+                    audio,
                     respond_to,
                     span,
                 } => {
                     let transcriber = self.transcribe_channel.clone();
                     tokio::spawn(
                         async move {
-                            let mut bin = Vec::new();
-                            while let Some(chunk) = audio.recv().await {
-                                for sample in chunk.into_iter() {
-                                    bin.append(&mut sample.to_le_bytes().to_vec());
-                                }
-                            }
-
-                            let bin = discord_to_whisper(bin).await.unwrap();
+                            let bin = discord_to_whisper(audio).await.unwrap();
 
                             if transcriber
                                 .send(Request::Raw(bin, respond_to))

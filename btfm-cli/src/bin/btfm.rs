@@ -302,7 +302,7 @@ fn display_clips(clips: &Clips) {
         prettytable::Cell::new("Created").with_style(prettytable::Attr::Bold),
         prettytable::Cell::new("Last Played").with_style(prettytable::Attr::Bold),
         prettytable::Cell::new("Plays").with_style(prettytable::Attr::Bold),
-        prettytable::Cell::new("Description").with_style(prettytable::Attr::Bold),
+        prettytable::Cell::new("Title").with_style(prettytable::Attr::Bold),
         prettytable::Cell::new("Phrases").with_style(prettytable::Attr::Bold),
     ]));
     for clip in clips.clips.iter() {
@@ -311,13 +311,7 @@ fn display_clips(clips: &Clips) {
             prettytable::Cell::new(clip.created_on.trunc_subsecs(0).to_string().as_str()),
             prettytable::Cell::new(clip.last_played.trunc_subsecs(0).to_string().as_str()),
             prettytable::Cell::new(clip.plays.to_string().as_str()),
-            prettytable::Cell::new(
-                clip.description
-                    .chars()
-                    .take(64)
-                    .collect::<String>()
-                    .as_str(),
-            ),
+            prettytable::Cell::new(clip.title.chars().take(64).collect::<String>().as_str()),
             prettytable::Cell::new(
                 clip.phrases
                     .as_ref()
@@ -329,7 +323,9 @@ fn display_clips(clips: &Clips) {
                             .join(", ")
                     })
                     .unwrap_or("None".to_string())
-                    .to_string()
+                    .chars()
+                    .take(64)
+                    .collect::<String>()
                     .as_str(),
             ),
         ]));

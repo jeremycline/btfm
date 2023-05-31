@@ -9,6 +9,9 @@ documentation = "https://docs.rs/btfm/"
 readme = "../README.md"
 repository = "https://github.com/jeremycline/btfm/"
 
+[dependencies]
+bytes = "1.4.0"
+
 [dependencies.anyhow]
 version = "1.0.71"
 features = ["backtrace"]

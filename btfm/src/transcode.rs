@@ -6,6 +6,7 @@ use gstreamer::prelude::Cast;
 use gstreamer::prelude::GstBinExtManual;
 use gstreamer::traits::{ElementExt, GstBinExt};
 use gstreamer::Element;
+use tokio::sync::mpsc::Receiver;
 use tracing::instrument;
 
 /// Convert arbitrary raw audio to the target format required by Whisper
@@ -85,7 +86,9 @@ fn discord_to_whisper_pipeline() -> anyhow::Result<gstreamer::Pipeline> {
 }
 
 #[instrument(skip_all)]
-pub(crate) async fn discord_to_whisper(data: Vec<u8>) -> anyhow::Result<Vec<f32>> {
+pub(crate) async fn discord_to_whisper(
+    mut data: Receiver<bytes::Bytes>,
+) -> anyhow::Result<Vec<f32>> {
     let pipeline = discord_to_whisper_pipeline()?;
     let mut bus = pipeline
         .bus()
@@ -138,14 +141,16 @@ pub(crate) async fn discord_to_whisper(data: Vec<u8>) -> anyhow::Result<Vec<f32>
     });
 
     let data_writer: tokio::task::JoinHandle<anyhow::Result<()>> = tokio::spawn(async move {
-        let mut buffer = gstreamer::Buffer::with_size(data.len()).unwrap();
-        let mut_buf = buffer
-            .get_mut()
-            .ok_or_else(|| anyhow::anyhow!("Gstreamer buffer is not mutable"))?;
-        let mut mut_buf = mut_buf.map_writable()?;
-        mut_buf.copy_from_slice(&data);
-        drop(mut_buf);
-        appsrc.push_buffer(buffer)?;
+        while let Some(bytes) = data.recv().await {
+            let mut buffer = gstreamer::Buffer::with_size(bytes.len())?;
+            let mut_buf = buffer
+                .get_mut()
+                .ok_or_else(|| anyhow::anyhow!("Gstreamer buffer is not mutable"))?;
+            let mut mut_buf = mut_buf.map_writable()?;
+            mut_buf.copy_from_slice(&bytes);
+            drop(mut_buf);
+            appsrc.push_buffer(buffer)?;
+        }
         appsrc.end_of_stream()?;
         Ok(())
     });

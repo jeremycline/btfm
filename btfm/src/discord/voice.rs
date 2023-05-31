@@ -6,6 +6,7 @@
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use bytes::{BufMut, BytesMut};
 use chrono::NaiveDateTime;
 use rand::prelude::*;
 use regex::Regex;
@@ -163,7 +164,12 @@ impl VoiceEventHandler for Receiver {
 
                     let transcriber = user.transcriber.take();
                     if let Some(handle) = transcriber {
-                        if handle.send(audio.to_vec()).await.is_err() {
+                        let mut buffer = BytesMut::with_capacity(audio.len() * 2);
+                        for sample in audio.into_iter() {
+                            buffer.put(sample.to_le_bytes().as_ref())
+                        }
+                        let buffer = buffer.freeze();
+                        if handle.send(buffer).await.is_err() {
                             warn!("Failed to send audio to transcriber");
                         } else {
                             user.transcriber.replace(handle);
