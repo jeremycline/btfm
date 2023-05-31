@@ -13,6 +13,7 @@ use tracing::instrument;
 fn whisper_bin() -> anyhow::Result<gstreamer::Bin> {
     let bin = gstreamer::Bin::new(None);
 
+    let queue = gstreamer::ElementFactory::make("queue").build()?;
     let parser = gstreamer::ElementFactory::make("rawaudioparse")
         .build()
         .context("Install the rawaudioparse GStreamer plugin")?;
@@ -22,7 +23,9 @@ fn whisper_bin() -> anyhow::Result<gstreamer::Bin> {
     let audio_converter = gstreamer::ElementFactory::make("audioconvert")
         .build()
         .context("Install the audioconvert GStreamer plugins")?;
-    let appsink = gstreamer_app::AppSink::builder().build();
+    let appsink = gstreamer_app::AppSink::builder()
+        .name("whisper-appsink")
+        .build();
     let caps = gstreamer_audio::AudioInfo::builder(gstreamer_audio::AudioFormat::F32le, 16_000, 1)
         .build()
         .context("Previously valid audio info is now invalid")?
@@ -32,15 +35,8 @@ fn whisper_bin() -> anyhow::Result<gstreamer::Bin> {
     appsink.set_async(false);
     appsink.set_sync(false);
 
-    let target_pad = parser
-        .static_pad("sink")
-        .expect("The rawaudioparse GStreamer API changed; no sink pad found.");
-    let bin_pad = gstreamer::GhostPad::with_target(Some("sink"), &target_pad)
-        .context("Unable to link parse pad to the bin ghost pad.")?;
-    bin.add_pad(&bin_pad)
-        .context("Failed to add sink pad to the bin")?;
-
     let elements = [
+        &queue,
         &parser,
         &audio_resampler,
         &audio_converter,
@@ -48,6 +44,15 @@ fn whisper_bin() -> anyhow::Result<gstreamer::Bin> {
     ];
     bin.add_many(&elements)
         .context("Failed to add elements to whisper bin")?;
+
+    let target_pad = queue
+        .static_pad("sink")
+        .expect("The queue GStreamer API changed; no sink pad found.");
+    let bin_pad = gstreamer::GhostPad::with_target(Some("sink"), &target_pad)
+        .context("Unable to link queue pad to the bin ghost pad.")?;
+    bin.add_pad(&bin_pad)
+        .context("Failed to add sink pad to the bin")?;
+
     gstreamer::Element::link_many(&elements).context("Failed to link whisper bin elements")?;
     elements
         .into_iter()
@@ -121,6 +126,21 @@ pub(crate) async fn discord_to_whisper(
             )
         })?;
 
+    let data_writer: tokio::task::JoinHandle<anyhow::Result<()>> = tokio::spawn(async move {
+        while let Some(bytes) = data.recv().await {
+            let mut buffer = gstreamer::Buffer::with_size(bytes.len())?;
+            let mut_buf = buffer
+                .get_mut()
+                .ok_or_else(|| anyhow::anyhow!("Gstreamer buffer is not mutable"))?;
+            let mut mut_buf = mut_buf.map_writable()?;
+            mut_buf.copy_from_slice(&bytes);
+            drop(mut_buf);
+            appsrc.push_buffer(buffer)?;
+        }
+        appsrc.end_of_stream()?;
+        Ok(())
+    });
+
     let data_reader = tokio::spawn(async move {
         let mut transcoded_data = vec![];
         let mut stream = appsink.stream();
@@ -140,21 +160,6 @@ pub(crate) async fn discord_to_whisper(
         samples
     });
 
-    let data_writer: tokio::task::JoinHandle<anyhow::Result<()>> = tokio::spawn(async move {
-        while let Some(bytes) = data.recv().await {
-            let mut buffer = gstreamer::Buffer::with_size(bytes.len())?;
-            let mut_buf = buffer
-                .get_mut()
-                .ok_or_else(|| anyhow::anyhow!("Gstreamer buffer is not mutable"))?;
-            let mut mut_buf = mut_buf.map_writable()?;
-            mut_buf.copy_from_slice(&bytes);
-            drop(mut_buf);
-            appsrc.push_buffer(buffer)?;
-        }
-        appsrc.end_of_stream()?;
-        Ok(())
-    });
-
     let events = tokio::spawn(async move {
         while let Some(message) = bus.next().await {
             match message.view() {
@@ -163,7 +168,8 @@ pub(crate) async fn discord_to_whisper(
                     break;
                 }
                 gstreamer::MessageView::Error(e) => {
-                    panic!("Transcoding failed: {e:?}");
+                    tracing::error!("Transcoding failed: {e:?}");
+                    break;
                 }
                 event => tracing::debug!("GStreamer event: {:?}", event),
             }
@@ -174,4 +180,36 @@ pub(crate) async fn discord_to_whisper(
     events.await?;
     pipeline.set_state(gstreamer::State::Null)?;
     Ok(res)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_whisper_bin() {
+        gstreamer::init().unwrap();
+        whisper_bin().expect("whisper_bin is unbuildable");
+    }
+
+    #[test]
+    fn test_discord_to_whisper_pipeline() {
+        gstreamer::init().unwrap();
+        discord_to_whisper_pipeline().expect("discord-to-whisper pipeline failed");
+    }
+
+    #[tokio::test]
+    async fn test_discord_to_whisper_transcoding() {
+        gstreamer::init().unwrap();
+        let (sender, receiver) = tokio::sync::mpsc::channel(1);
+        let transcode_task = tokio::spawn(discord_to_whisper(receiver));
+
+        let bytes = bytes::Bytes::from_static(&[0, 0, 0, 0]);
+        sender.send(bytes).await.unwrap();
+        drop(sender);
+
+        let data = transcode_task.await.unwrap().unwrap();
+
+        assert_eq!(1, data.len());
+    }
 }

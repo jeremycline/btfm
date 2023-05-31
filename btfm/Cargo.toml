@@ -50,15 +50,15 @@ version = "0.3"
 
 [dependencies.gstreamer]
 version = "0.20"
-features = ["v1_16"]
+features = ["v1_18"]
 
 [dependencies.gstreamer-app]
 version = "0.20"
-features = ["v1_16"]
+features = ["v1_18"]
 
 [dependencies.gstreamer-audio]
 version = "0.20"
-features = ["v1_16"]
+features = ["v1_18"]
 
 [dependencies.hex]
 version = "0.4.3"
