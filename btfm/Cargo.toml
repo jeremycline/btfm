@@ -29,7 +29,7 @@ path = "../btfm-api-structs"
 version = "0.3"
 
 [dependencies.cached]
-version = "0.43"
+version = "0.44"
 features = ["async_tokio_rt_multi_thread"]
 
 [dependencies.clap]
