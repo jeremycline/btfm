@@ -165,7 +165,7 @@ impl VoiceEventHandler for Receiver {
                     let transcriber = user.transcriber.take();
                     if let Some(handle) = transcriber {
                         let mut buffer = BytesMut::with_capacity(audio.len() * 2);
-                        for sample in audio.into_iter() {
+                        for sample in audio.iter() {
                             buffer.put(sample.to_le_bytes().as_ref())
                         }
                         let buffer = buffer.freeze();
