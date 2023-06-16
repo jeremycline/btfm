@@ -108,7 +108,7 @@ version = "0.11"
 features = ["builder", "cache", "client", "framework", "gateway", "http", "model", "standard_framework", "rustls_backend", "utils", "voice", "tokio_task_builder"]
 
 [dependencies.sha2]
-version = "0.10.6"
+version = "0.10.7"
 
 [dependencies.songbird]
 version = "0.3"
