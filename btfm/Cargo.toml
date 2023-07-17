@@ -17,7 +17,7 @@ version = "1.0.71"
 features = ["backtrace"]
 
 [dependencies.axum]
-version = "0.6.18"
+version = "0.6.19"
 features = ["headers", "http1", "json", "multipart", "tower-log"]
 
 [dependencies.axum-server]
