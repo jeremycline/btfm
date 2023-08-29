@@ -11,7 +11,7 @@ use tracing::instrument;
 
 /// Convert arbitrary raw audio to the target format required by Whisper
 fn whisper_bin() -> anyhow::Result<gstreamer::Bin> {
-    let bin = gstreamer::Bin::new(None);
+    let bin = gstreamer::Bin::builder().name("raw-to-whisper").build();
 
     let queue = gstreamer::ElementFactory::make("queue").build()?;
     let parser = gstreamer::ElementFactory::make("rawaudioparse")
@@ -48,7 +48,7 @@ fn whisper_bin() -> anyhow::Result<gstreamer::Bin> {
     let target_pad = queue
         .static_pad("sink")
         .expect("The queue GStreamer API changed; no sink pad found.");
-    let bin_pad = gstreamer::GhostPad::with_target(Some("sink"), &target_pad)
+    let bin_pad = gstreamer::GhostPad::with_target(&target_pad)
         .context("Unable to link queue pad to the bin ghost pad.")?;
     bin.add_pad(&bin_pad)
         .context("Failed to add sink pad to the bin")?;
@@ -64,7 +64,9 @@ fn whisper_bin() -> anyhow::Result<gstreamer::Bin> {
 
 /// Convert Discord audio to a format we can send to Whisper.
 fn discord_to_whisper_pipeline() -> anyhow::Result<gstreamer::Pipeline> {
-    let pipeline = gstreamer::Pipeline::new(Some("discord-to-whisper"));
+    let pipeline = gstreamer::Pipeline::builder()
+        .name("discord-to-whisper")
+        .build();
 
     let appsrc = gstreamer_app::AppSrc::builder()
         .name("whisper-appsrc")
