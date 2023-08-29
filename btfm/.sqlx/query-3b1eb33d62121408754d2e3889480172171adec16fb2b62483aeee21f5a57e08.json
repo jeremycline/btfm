@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT *\n        FROM clip_phrases;\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "uuid",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "clip",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "phrase",
+        "ordinal": 2,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "3b1eb33d62121408754d2e3889480172171adec16fb2b62483aeee21f5a57e08"
+}

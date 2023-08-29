@@ -111,12 +111,12 @@ features = ["builder", "cache", "client", "framework", "gateway", "http", "model
 version = "0.10.7"
 
 [dependencies.songbird]
-version = "0.3"
+version = "0.3.2"
 features=["builtin-queue", "driver", "gateway", "serenity-rustls"]
 
 [dependencies.sqlx]
-version = "0.6.3"
-features = ["runtime-tokio-rustls", "sqlite", "chrono", "migrate", "macros", "offline", "uuid"]
+version = "0.7.1"
+features = ["runtime-tokio", "sqlite", "chrono", "migrate", "macros", "uuid"]
 
 [dependencies.thesaurus]
 version = "0.5.2"

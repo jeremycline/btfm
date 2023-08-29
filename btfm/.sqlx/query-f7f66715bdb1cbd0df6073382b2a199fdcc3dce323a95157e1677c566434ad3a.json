@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        DELETE FROM clip_phrases\n        WHERE clip = $1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "f7f66715bdb1cbd0df6073382b2a199fdcc3dce323a95157e1677c566434ad3a"
+}

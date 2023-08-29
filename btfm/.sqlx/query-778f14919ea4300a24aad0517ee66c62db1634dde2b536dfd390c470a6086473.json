@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        UPDATE clips\n        SET description = $1\n        WHERE uuid = $2\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "778f14919ea4300a24aad0517ee66c62db1634dde2b536dfd390c470a6086473"
+}

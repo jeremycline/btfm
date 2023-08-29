@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        UPDATE clips\n        SET plays = $1, last_played = $2\n        WHERE uuid = $3\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "d9234be1c798e677795507012cb3125dd4bf5f1e9e9de6735ed2c4dfe9366a0e"
+}

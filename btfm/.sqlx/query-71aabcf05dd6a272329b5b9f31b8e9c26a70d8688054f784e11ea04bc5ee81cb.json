@@ -1,0 +1,68 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT *\n        FROM clips\n        WHERE clips.uuid = ?;\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "uuid",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_on",
+        "ordinal": 1,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "last_played",
+        "ordinal": 2,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "plays",
+        "ordinal": 3,
+        "type_info": "Int64"
+      },
+      {
+        "name": "speech_detected",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "audio_file",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "original_file_name",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "title",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "description",
+        "ordinal": 8,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "71aabcf05dd6a272329b5b9f31b8e9c26a70d8688054f784e11ea04bc5ee81cb"
+}

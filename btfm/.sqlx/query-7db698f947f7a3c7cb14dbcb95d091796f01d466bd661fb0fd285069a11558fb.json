@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        INSERT INTO clip_phrases (uuid, clip, phrase)\n        VALUES ($1, $2, $3)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "7db698f947f7a3c7cb14dbcb95d091796f01d466bd661fb0fd285069a11558fb"
+}

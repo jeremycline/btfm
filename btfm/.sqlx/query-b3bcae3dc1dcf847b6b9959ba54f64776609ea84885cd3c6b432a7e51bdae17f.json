@@ -1,0 +1,68 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        INSERT INTO clips (uuid, speech_detected, description, audio_file, title, original_file_name)\n        VALUES (?, ?, ?, ?, ?, ?)\n        RETURNING uuid, created_on, last_played, plays, speech_detected, description, audio_file, title, original_file_name\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "uuid",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_on",
+        "ordinal": 1,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "last_played",
+        "ordinal": 2,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "plays",
+        "ordinal": 3,
+        "type_info": "Int64"
+      },
+      {
+        "name": "speech_detected",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "description",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "audio_file",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "title",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "original_file_name",
+        "ordinal": 8,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "b3bcae3dc1dcf847b6b9959ba54f64776609ea84885cd3c6b432a7e51bdae17f"
+}

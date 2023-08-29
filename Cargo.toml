@@ -6,6 +6,10 @@ members = [
 	"btfm-api-structs",
 ]
 
+# Drop with songbird > 0.3.2
+[patch.crates-io]
+songbird = { git = 'https://github.com/serenity-rs/songbird.git', commit = "df8ee0ffcad03c26db489c356e183a7e1190b04c" }
+
 [profile.production]
 inherits = "release"
 lto = true

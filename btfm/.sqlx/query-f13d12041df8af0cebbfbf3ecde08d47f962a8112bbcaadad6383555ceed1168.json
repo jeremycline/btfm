@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        DELETE FROM clips\n        WHERE clips.uuid = ?;\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "f13d12041df8af0cebbfbf3ecde08d47f962a8112bbcaadad6383555ceed1168"
+}
