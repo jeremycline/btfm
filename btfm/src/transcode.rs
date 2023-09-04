@@ -42,7 +42,7 @@ fn whisper_bin() -> anyhow::Result<gstreamer::Bin> {
         &audio_converter,
         appsink.upcast_ref(),
     ];
-    bin.add_many(&elements)
+    bin.add_many(elements)
         .context("Failed to add elements to whisper bin")?;
 
     let target_pad = queue
@@ -53,7 +53,7 @@ fn whisper_bin() -> anyhow::Result<gstreamer::Bin> {
     bin.add_pad(&bin_pad)
         .context("Failed to add sink pad to the bin")?;
 
-    gstreamer::Element::link_many(&elements).context("Failed to link whisper bin elements")?;
+    gstreamer::Element::link_many(elements).context("Failed to link whisper bin elements")?;
     elements
         .into_iter()
         .map(|e| e.sync_state_with_parent())
@@ -81,9 +81,9 @@ fn discord_to_whisper_pipeline() -> anyhow::Result<gstreamer::Pipeline> {
     let bin = whisper_bin()?;
     let elements: [&Element; 2] = [appsrc.upcast_ref(), bin.upcast_ref()];
     pipeline
-        .add_many(&elements)
+        .add_many(elements)
         .expect("Failed to add elements to pipeline");
-    gstreamer::Element::link_many(&elements).context("Failed to link pipeline")?;
+    gstreamer::Element::link_many(elements).context("Failed to link pipeline")?;
     elements
         .into_iter()
         .map(|e| e.sync_state_with_parent())
