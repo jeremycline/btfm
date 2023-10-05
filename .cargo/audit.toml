@@ -1,5 +1,4 @@
 [advisories]
 ignore = [
-    "RUSTSEC-2020-0071",
-    "RUSTSEC-2023-0052",  # Update webpki > 0.22
+    "RUSTSEC-2023-0065",  # tungstenite 0.20+ needed
 ]
