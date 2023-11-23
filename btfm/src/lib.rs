@@ -21,8 +21,6 @@ pub enum Error {
     ConfigValueError(String),
     #[error("The Discord client encountered an error: {0}")]
     Serenity(#[from] serenity::Error),
-    #[error("Unable to generate voice Input: {0}")]
-    SongbirdInput(#[from] songbird::input::error::Error),
     #[error("HTTP server encountered an error: {0}")]
     Server(std::io::Error),
     #[error("Tokio task failed: {0}")]

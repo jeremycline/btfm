@@ -6,10 +6,13 @@ use rand::prelude::IteratorRandom;
 use serenity::{
     async_trait,
     client::{Context, EventHandler},
-    model::{gateway::Ready, id::ChannelId, voice::VoiceState},
+    model::{gateway::Ready, voice::VoiceState},
     prelude::*,
 };
-use songbird::{Call, CoreEvent};
+use songbird::{
+    id::{ChannelId, GuildId},
+    Call, CoreEvent,
+};
 use sqlx::SqlitePool;
 use tracing::{debug, error, info, warn};
 
@@ -17,11 +20,6 @@ use crate::db::Clip;
 
 use super::voice::{hello_there, Receiver};
 use super::BtfmData;
-
-pub struct HttpClient;
-impl TypeMapKey for HttpClient {
-    type Value = Arc<serenity::CacheAndHttp>;
-}
 
 async fn play_clip_at_interval(call: Arc<Mutex<Call>>, db_pool: SqlitePool) {
     info!("Starting task to play clips an interval");
@@ -42,13 +40,14 @@ async fn play_clip_at_interval(call: Arc<Mutex<Call>>, db_pool: SqlitePool) {
             let mut conn = db_pool.acquire().await.unwrap();
             if let Ok(clips) = crate::db::clips_list(&mut conn).await {
                 if let Some(clip) = select_clip(clips) {
-                    if let Ok(source) =
-                        songbird::ffmpeg(config.data_directory.join(clip.audio_file)).await
-                    {
-                        info!("Playing a random clip to keep things spicy");
-                        let mut handle = call.lock().await;
-                        handle.enqueue_source(source);
-                    }
+                    info!("Playing a random clip to keep things spicy");
+                    call.lock()
+                        .await
+                        .enqueue_input(
+                            songbird::input::File::new(config.data_directory.join(clip.audio_file))
+                                .into(),
+                        )
+                        .await;
                 }
             }
         }
@@ -87,46 +86,42 @@ impl Handler {
             .expect("Expected BtfmData in TypeMap");
         let mut btfm = btfm_data.lock().await;
 
-        if let Ok(channel) = context.http.get_channel(btfm.config.channel_id).await {
+        if let Ok(channel) = context
+            .http
+            .get_channel(btfm.config.channel_id.into())
+            .await
+        {
             match channel.guild() {
                 Some(guild_channel) => {
-                    if let Ok(members) = guild_channel.members(&context.cache).await {
+                    let guild_id: GuildId = btfm.config.guild_id.into();
+                    if let Ok(members) = guild_channel.members(&context.cache) {
                         if !members.iter().any(|m| !m.user.bot) {
-                            if let Err(e) = manager.remove(btfm.config.guild_id).await {
+                            if let Err(e) = manager.remove(guild_id).await {
                                 tracing::trace!("Failed to remove guild? {:?}", e);
                             }
                             btfm.user_history.clear();
-                        } else if manager.get(btfm.config.guild_id).is_none() {
-                            let (call, result) = manager
-                                .join(btfm.config.guild_id, btfm.config.channel_id)
-                                .await;
-                            if result.is_ok() {
+                        } else if manager.get(guild_id).is_none() {
+                            let channel_id: ChannelId = btfm.config.channel_id.into();
+                            if let Ok(call) = manager.join(guild_id, channel_id).await {
                                 tokio::spawn(play_clip_at_interval(
                                     Arc::clone(&call),
                                     btfm.db.clone(),
                                 ));
 
                                 let mut handler = call.lock().await;
-                                let http = context
-                                    .data
-                                    .read()
-                                    .await
-                                    .get::<HttpClient>()
-                                    .cloned()
-                                    .expect("Expected HTTP client");
                                 handler.add_global_event(
-                                    CoreEvent::SpeakingUpdate.into(),
+                                    CoreEvent::SpeakingStateUpdate.into(),
                                     Receiver::new(
                                         Arc::clone(&btfm_data),
-                                        Arc::clone(&http),
+                                        Arc::clone(&context.http),
                                         Arc::clone(&call),
                                     ),
                                 );
                                 handler.add_global_event(
-                                    CoreEvent::VoicePacket.into(),
+                                    CoreEvent::VoiceTick.into(),
                                     Receiver::new(
                                         Arc::clone(&btfm_data),
-                                        Arc::clone(&http),
+                                        Arc::clone(&context.http),
                                         Arc::clone(&call),
                                     ),
                                 );
@@ -134,7 +129,7 @@ impl Handler {
                                     CoreEvent::ClientDisconnect.into(),
                                     Receiver::new(
                                         Arc::clone(&btfm_data),
-                                        Arc::clone(&http),
+                                        Arc::clone(&context.http),
                                         Arc::clone(&call),
                                     ),
                                 );
@@ -180,10 +175,11 @@ impl EventHandler for Handler {
             .clone();
         let config = crate::CONFIG.get().unwrap();
 
-        if let Some(locked_handler) = manager.get(config.guild_id) {
+        let guild_id: GuildId = config.guild_id.into();
+        if let Some(locked_handler) = manager.get(guild_id) {
             // This event pertains to the channel we care about.
             let mut handler = locked_handler.lock().await;
-            if Some(ChannelId(config.channel_id)) == new.channel_id {
+            if Some(config.channel_id.into()) == new.channel_id {
                 match old {
                     Some(old_state) => {
                         // Order matters here, the UI mutes users who deafen
@@ -193,37 +189,37 @@ impl EventHandler for Handler {
                             debug!("Someone deafened themselves in a channel we care about");
                             hello_there("deaf")
                                 .await
-                                .map(|s| Some(handler.play_source(s)));
+                                .map(|s| Some(handler.play_input(s.into())));
                         } else if old_state.self_deaf != new.self_deaf && !new.self_deaf {
                             debug!("Someone un-deafened themselves in a channel we care about");
                             hello_there("undeaf")
                                 .await
-                                .map(|s| Some(handler.play_source(s)));
+                                .map(|s| Some(handler.play_input(s.into())));
                         } else if old_state.self_mute != new.self_mute && new.self_mute {
                             debug!("Someone muted in the channel we care about");
                             hello_there("mute")
                                 .await
-                                .map(|s| Some(handler.play_source(s)));
+                                .map(|s| Some(handler.play_input(s.into())));
                         } else if old_state.self_mute != new.self_mute && !new.self_mute {
                             debug!("Someone un-muted in the channel we care about");
                             hello_there("unmute")
                                 .await
-                                .map(|s| Some(handler.play_source(s)));
+                                .map(|s| Some(handler.play_input(s.into())));
                         }
                     }
                     None => {
                         debug!("User just joined our channel");
                         hello_there("hello")
                             .await
-                            .map(|s| Some(handler.play_source(s)));
-                        let join_count = increment_join_count(context, *new.user_id.as_u64()).await;
+                            .map(|s| Some(handler.play_input(s.into())));
+                        let join_count = increment_join_count(context, new.user_id.into()).await;
                         if join_count > 1 {
                             info!("Someone just rejoined; let them know how we feel");
                             let rng: f64 = rand::random();
                             if 1_f64 - (join_count as f64 * 0.1).exp() > rng {
                                 hello_there("rejoin")
                                     .await
-                                    .map(|s| Some(handler.play_source(s)));
+                                    .map(|s| Some(handler.play_input(s.into())));
                             }
                         }
                     }

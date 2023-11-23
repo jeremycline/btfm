@@ -1,10 +1,12 @@
 //! Mimic3 client to perform text-to-speech, if configured.
-use std::{io::Write, path::Path};
+use std::{
+    io::Write,
+    path::{Path, PathBuf},
+};
 
 use cached::proc_macro::cached;
 use reqwest::Url;
 use sha2::Digest;
-use songbird::input::Input;
 use tracing::instrument;
 
 use crate::Error;
@@ -16,7 +18,7 @@ pub(crate) async fn tts(
     endpoint: Url,
     text: String,
     voice: String,
-) -> Result<Input, Error> {
+) -> Result<songbird::input::File<PathBuf>, Error> {
     let mut hasher = sha2::Sha256::new();
     hasher.update(text.as_bytes());
     hasher.update(voice.as_bytes());
@@ -25,7 +27,7 @@ pub(crate) async fn tts(
     let dest_path = cache_dir.join(key);
     if dest_path.is_file() {
         tracing::info!(file = ?dest_path, "Playing existing TTS file");
-        Ok(songbird::ffmpeg(dest_path).await?)
+        Ok(songbird::input::File::new(dest_path))
     } else {
         let tts_endpoint = endpoint.join("tts")?;
         let response = client
@@ -48,8 +50,7 @@ pub(crate) async fn tts(
         dest_file.sync_all()?;
         drop(dest_file);
         tracing::info!(file = ?dest_path, "Caching new TTS file");
-        let source = songbird::ffmpeg(dest_path).await?;
-        Ok(source)
+        Ok(songbird::input::File::new(dest_path))
     }
 }
 

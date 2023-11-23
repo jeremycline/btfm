@@ -3,6 +3,7 @@
 //! Serenity does not ship with direct support for voice channels. Instead,
 //! support is provided via Songbird.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -10,52 +11,37 @@ use bytes::{BufMut, BytesMut};
 use chrono::NaiveDateTime;
 use rand::prelude::*;
 use regex::Regex;
-use serenity::CacheAndHttp;
-use serenity::{async_trait, http::client::Http, model::id::ChannelId, prelude::*};
+use serenity::{async_trait, model::id::ChannelId, prelude::*};
 use songbird::{
-    input::Input,
     model::payload::{ClientDisconnect, Speaking},
     Call, Event, EventContext, EventHandler as VoiceEventHandler,
 };
 use tokio::sync::{mpsc, oneshot};
-use tracing::{debug, error, info, trace, warn, Instrument};
+use tracing::{debug, error, info, warn, Instrument};
 use uuid::Uuid;
 
 use super::{BtfmData, User};
 use crate::db;
 
 /// Return an AudioSource to greet a new user (or the channel at large).
-pub async fn hello_there(event_name: &str) -> Option<Input> {
-    let hello = crate::CONFIG
+pub async fn hello_there(event_name: &str) -> Option<songbird::input::File<PathBuf>> {
+    crate::CONFIG
         .get()
         .map(|config| config.data_directory.join(event_name))
-        .and_then(|f| if f.exists() { Some(f) } else { None });
-    if let Some(path) = hello {
-        match songbird::ffmpeg(&path).await {
-            Ok(source) => Some(source),
-            Err(error) => {
-                tracing::error!(
-                    ?error,
-                    "Failed to create a source from the file; is ffmpeg on the PATH?"
-                );
-                None
-            }
-        }
-    } else {
-        None
-    }
+        .and_then(|f| if f.exists() { Some(f) } else { None })
+        .map(songbird::input::File::new)
 }
 
 pub struct Receiver {
     btfm_data: Arc<Mutex<BtfmData>>,
-    http: Arc<CacheAndHttp>,
+    http: Arc<serenity::http::Http>,
     call: Arc<Mutex<Call>>,
 }
 
 impl Receiver {
     pub fn new(
         btfm_data: Arc<Mutex<BtfmData>>,
-        http: Arc<CacheAndHttp>,
+        http: Arc<serenity::http::Http>,
         call: Arc<Mutex<Call>>,
     ) -> Receiver {
         Receiver {
@@ -86,70 +72,22 @@ impl VoiceEventHandler for Receiver {
                         .or_insert(*ssrc);
                 }
             }
-
-            EventContext::SpeakingUpdate(data) => {
-                let (ssrc, speaking) = (data.ssrc, data.speaking);
-                debug!("SSRC {:?} speaking state update to {:?}", ssrc, speaking);
-                if speaking {
-                    let mut btfm_data = self.btfm_data.lock().await;
-                    if let Some(user) = btfm_data.users.get_mut(&ssrc) {
+            EventContext::VoiceTick(voice_tick) => {
+                // Update all current speakers
+                let mut btfm_data = self.btfm_data.lock().await;
+                for (ssrc, voice_data) in voice_tick.speaking.iter() {
+                    if let Some(user) = btfm_data.users.get_mut(ssrc) {
                         user.speaking = true;
                     }
-                    drop(btfm_data);
 
-                    let call = self.call.lock().await;
-                    if let Some(track) = call.queue().current() {
-                        if let Some(duration) = track.metadata().duration {
-                            if duration > core::time::Duration::new(3, 0) {
-                                if let Err(e) = track.set_volume(0.4) {
-                                    info!("Unable to lower volume of playback: {}", e);
-                                }
-                            } else {
-                                info!("Track less than 3 seconds; playing at full volume");
-                            }
-                        }
-                    }
-                } else {
-                    let mut btfm_data = self.btfm_data.lock().await;
-                    if let Some(user) = btfm_data.users.get_mut(&ssrc) {
-                        user.speaking = false;
-                    }
+                    let transcriber = &btfm_data.transcriber.clone();
+                    let user = btfm_data.users.entry(*ssrc).or_insert_with(User::new);
 
-                    // Bump the clip volume back up if no one is talking
-                    if btfm_data.users.values().all(|user| !user.speaking) {
-                        let call = self.call.lock().await;
-                        if let Some(track) = call.queue().current() {
-                            if let Err(e) = track.set_volume(1.0) {
-                                info!("Unable to boost volume playback: {}", e);
-                            }
-                        }
-                    }
-
-                    if let Some(user) = btfm_data.users.get_mut(&ssrc) {
-                        // This closes the audio sending channel which causes the worker to hang up the text
-                        // sending channel, which causes the handle_text() function to break from its
-                        // receiving loop and look for a clip match.
-                        user.transcriber.take();
-                    }
-                }
-            }
-
-            EventContext::VoicePacket(voice_data) => {
-                let (packet, audio) = (voice_data.packet, voice_data.audio);
-                trace!(
-                    "Received voice packet from ssrc {}, sequence {}",
-                    packet.ssrc,
-                    packet.sequence.0,
-                );
-                let mut btfm_data = self.btfm_data.lock().await;
-
-                let transcriber = &btfm_data.transcriber.clone();
-                let user = btfm_data.users.entry(packet.ssrc).or_insert_with(User::new);
-
-                if let Some(audio) = audio {
+                    // The user just started talking.
                     if user.transcriber.is_none() {
                         let (audio_sender, audio_receiver) = mpsc::channel(2048);
-                        let span = tracing::info_span!("stream", id = %Uuid::new_v4(), ssrc = %packet.ssrc);
+                        let span =
+                            tracing::info_span!("stream", id = %Uuid::new_v4(), ssrc = %ssrc);
                         info!(parent: &span, "Beginning new transcription stream");
                         let text_receiver =
                             transcriber.stream(audio_receiver).instrument(span).await;
@@ -162,8 +100,13 @@ impl VoiceEventHandler for Receiver {
                         user.transcriber = Some(audio_sender);
                     }
 
+                    // Add the voice data we just got to the per-user transciption channel
                     let transcriber = user.transcriber.take();
                     if let Some(handle) = transcriber {
+                        let audio = voice_data
+                            .decoded_voice
+                            .as_ref()
+                            .expect("Error: Configure songbird to decode audio");
                         let mut buffer = BytesMut::with_capacity(audio.len() * 2);
                         for sample in audio.iter() {
                             buffer.put(sample.to_le_bytes().as_ref())
@@ -175,11 +118,32 @@ impl VoiceEventHandler for Receiver {
                             user.transcriber.replace(handle);
                         }
                     }
-                } else {
-                    error!("RTP packet event received, but there was no audio. Decode support may not be enabled?");
+                }
+
+                // All other users in the call who aren't currently talking.
+                // If they were speaking the previous tick, finish up their transcription.
+                for ssrc in voice_tick.silent.iter() {
+                    if let Some(user) = btfm_data.users.get_mut(ssrc) {
+                        user.speaking = false;
+                        // This closes the audio sending channel which causes the worker to hang up the text
+                        // sending channel, which causes the handle_text() function to break from its
+                        // receiving loop and look for a clip match.
+                        user.transcriber.take();
+                    }
+                }
+
+                // Adjust the currently-playing clip if someone is speaking (or not)
+                let call = self.call.lock().await;
+                if let Some(track) = call.queue().current() {
+                    if btfm_data.users.values().any(|user| user.speaking) {
+                        if let Err(e) = track.set_volume(0.4) {
+                            info!("Unable to lower volume playback: {}", e);
+                        }
+                    } else if let Err(e) = track.set_volume(1.0) {
+                        info!("Unable to boost volume playback: {}", e);
+                    }
                 }
             }
-
             EventContext::ClientDisconnect(ClientDisconnect { user_id, .. }) => {
                 debug!("User ({}) disconnected", user_id);
                 let mut btfm_data = self.btfm_data.lock().await;
@@ -199,7 +163,7 @@ impl VoiceEventHandler for Receiver {
 /// A task to find and play audio clips when the speech has been transcribed
 async fn handle_text(
     btfm_data: Arc<Mutex<BtfmData>>,
-    http_client: Arc<CacheAndHttp>,
+    http: Arc<serenity::http::Http>,
     call: Arc<Mutex<Call>>,
     text_receiver: oneshot::Receiver<String>,
 ) {
@@ -248,7 +212,7 @@ async fn handle_text(
                         .await
                     {
                         Ok(input) => {
-                            let _ = call.lock().await.enqueue_source(input);
+                            call.lock().await.enqueue_input(input.into()).await;
                         }
                         Err(err) => tracing::error!(err = %err, "Failed to create TTS audio"),
                     }
@@ -294,22 +258,13 @@ async fn handle_text(
             clip.description.unwrap_or_default(),
             phrases
         ));
-        log_event_to_channel(
-            btfm.config.log_channel_id.map(ChannelId),
-            &http_client.http,
-            &msg,
-        )
-        .await;
+        log_event_to_channel(btfm.config.log_channel_id.map(|i| i.into()), &http, &msg).await;
 
         let clip_path = btfm.config.data_directory.join(clip.audio_file);
-        match songbird::ffmpeg(&clip_path).await {
-            Ok(source) => {
-                call.lock().await.enqueue_source(source);
-            }
-            Err(e) => {
-                tracing::error!(?clip_path, error=?e, "Unable to play clip");
-            }
-        }
+        call.lock()
+            .await
+            .enqueue_input(songbird::input::File::new(clip_path).into())
+            .await;
     } else {
         debug!("No phrases matched what the bot heard");
     }
@@ -357,11 +312,11 @@ fn rate_limit(
 /// Send the given message to an optional channel.
 async fn log_event_to_channel(
     channel_id: Option<ChannelId>,
-    http_client: &Arc<Http>,
+    http_client: &Arc<serenity::http::Http>,
     message: &str,
 ) {
     if let Some(channel_id) = channel_id {
-        let chan = http_client.get_channel(*channel_id.as_u64()).await;
+        let chan = http_client.get_channel(channel_id).await;
         if let Ok(chan) = chan {
             if let Some(chan) = chan.guild() {
                 if let Err(e) = chan.say(http_client, message).await {

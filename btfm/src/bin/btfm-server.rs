@@ -11,10 +11,7 @@ use sqlx::{
 };
 use tracing::{debug, error, info};
 
-use btfm::discord::{
-    text::{Handler, HttpClient},
-    BtfmData,
-};
+use btfm::discord::{text::Handler, BtfmData};
 use btfm::{cli, db, Error};
 
 static MIGRATIONS: sqlx::migrate::Migrator = sqlx::migrate!("./migrations/");
@@ -89,7 +86,6 @@ async fn process_command(opts: cli::Btfm, db_pool: Pool<Sqlite>) -> Result<(), E
                 let transcriber = btfm_data.transcriber.clone();
                 let web_transcriber = btfm_data.transcriber.clone();
                 let handle = http_handle.clone();
-                data.insert::<HttpClient>(Arc::clone(&client.cache_and_http));
                 data.insert::<BtfmData>(Arc::new(Mutex::new(btfm_data)));
 
                 tokio::spawn(async move {

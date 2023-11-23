@@ -2,6 +2,7 @@
 use std::{
     fmt::Display,
     net::{IpAddr, Ipv4Addr, SocketAddr},
+    num::NonZeroU64,
     path::PathBuf,
 };
 
@@ -19,11 +20,11 @@ pub struct Config {
     /// The Discord API token.
     pub discord_token: String,
     /// Discord Channel ID to join.
-    pub channel_id: u64,
+    pub channel_id: NonZeroU64,
     /// Discord Channel ID to log events to
     pub log_channel_id: Option<u64>,
     /// Discord Guild ID to join.
-    pub guild_id: u64,
+    pub guild_id: NonZeroU64,
     /// How much to rate limit the bot. The odds of playing are 1 - e^-(x/rate_adjuster).
     pub rate_adjuster: f64,
     /// Whisper configuration options
@@ -93,9 +94,9 @@ impl Default for Config {
         Config {
             data_directory: PathBuf::from(r"/var/lib/btfm/"),
             discord_token: "Go get a Discord API token".to_string(),
-            channel_id: 0,
+            channel_id: NonZeroU64::new(1).unwrap(),
             log_channel_id: None,
-            guild_id: 0,
+            guild_id: NonZeroU64::new(1).unwrap(),
             rate_adjuster: 120.0,
             whisper: Default::default(),
             http_api: Default::default(),
