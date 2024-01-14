@@ -57,7 +57,7 @@ pub async fn download_clip(
     let clip_file = tokio::fs::File::open(&clip_path)
         .await
         .map_err(|_| crate::Error::NotFound)?;
-    let body = axum::body::StreamBody::new(ReaderStream::new(clip_file));
+    let body = axum::body::Body::from_stream(ReaderStream::new(clip_file));
     let filename = clip_path
         .file_name()
         .and_then(|s| s.to_str())

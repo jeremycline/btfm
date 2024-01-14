@@ -203,10 +203,9 @@ async fn handle_text(
                         .status_report
                         .clone()
                         .unwrap_or_else(|| "It doesn't look like anything to me.".to_string());
-                    if text.contains("all together") || text.contains("altogether") {
-                        body = punctuated_text.to_lowercase();
-                        body = body.replace("all together", "");
-                        body = body.replace("altogether", "");
+
+                    if let Some(result) = all_together_now(&punctuated_text) {
+                        body = result;
                     }
                     match crate::mimic::tts(&cache_dir, &btfm.http_client, endpoint, body, voice)
                         .await
@@ -339,5 +338,50 @@ async fn log_event_to_channel(
             "No channel id provided to log events, not logging {:}",
             message
         );
+    }
+}
+
+fn all_together_now(text: &str) -> Option<String> {
+    lazy_static::lazy_static! {
+        static ref ALL_TOGETHER: Regex = regex::RegexBuilder::new(r"(\s?)(al|all )together").case_insensitive(true).build().expect("Regex should be valid");
+    }
+
+    if let Some(x) = ALL_TOGETHER.find_iter(text).last() {
+        let (text, _) = text.split_at(x.start());
+        Some(text.to_string())
+    } else {
+        None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::all_together_now;
+
+    #[test]
+    fn test_all_together() {
+        let result = all_together_now("There is no match.");
+        assert_eq!(result, None)
+    }
+
+    #[test]
+    fn test_all_together_match() {
+        let result = all_together_now("A different type of flying all together.");
+        assert_eq!(result, Some("A different type of flying".to_string()))
+    }
+
+    #[test]
+    fn test_altogether_match() {
+        let result = all_together_now("A different type of flying altogether.");
+        assert_eq!(result, Some("A different type of flying".to_string()))
+    }
+
+    #[test]
+    fn test_multi_altogether_match() {
+        let result = all_together_now("It's an altogether different type of flying all together.");
+        assert_eq!(
+            result,
+            Some("It's an altogether different type of flying".to_string())
+        )
     }
 }

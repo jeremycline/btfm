@@ -118,8 +118,8 @@ async fn process_command(opts: cli::Btfm, db_pool: Pool<Sqlite>) -> Result<(), E
                 (Some(cert), Some(key)) => tokio::spawn(async move {
                     info!("Starting HTTPS server on {:?}", &http_api.url);
                     let tls_config =
-                        axum_server::tls_rustls::RustlsConfig::from_pem_file(cert, key).await?;
-                    axum_server::bind_rustls(http_api.url, tls_config)
+                        axum_server::tls_openssl::OpenSSLConfig::from_pem_file(cert, key).unwrap();
+                    axum_server::bind_openssl(http_api.url, tls_config)
                         .handle(http_handle)
                         .serve(router.into_make_service())
                         .await
@@ -210,8 +210,8 @@ async fn process_command(opts: cli::Btfm, db_pool: Pool<Sqlite>) -> Result<(), E
                 (Some(cert), Some(key)) => tokio::spawn(async move {
                     info!("Starting HTTPS server on {:?}", &http_api.url);
                     let tls_config =
-                        axum_server::tls_rustls::RustlsConfig::from_pem_file(cert, key).await?;
-                    axum_server::bind_rustls(http_api.url, tls_config)
+                        axum_server::tls_openssl::OpenSSLConfig::from_pem_file(cert, key).unwrap();
+                    axum_server::bind_openssl(http_api.url, tls_config)
                         .handle(http_handle)
                         .serve(router.into_make_service())
                         .await

@@ -13,23 +13,24 @@ repository = "https://github.com/jeremycline/btfm/"
 bytes = "1.5.0"
 
 [dependencies.anyhow]
-version = "1.0.75"
+version = "1.0.79"
 features = ["backtrace"]
 
 [dependencies.axum]
-version = "0.6.20"
-features = ["headers", "http1", "json", "multipart", "tower-log"]
+version = "0.7"
+features = ["multipart"]
 
 [dependencies.axum-server]
-version = "0.5"
-features = ["tls-rustls"]
+version = "0.6"
+default-features = false
+features = ["tls-openssl"]
 
 [dependencies.btfm-api-structs]
 path = "../btfm-api-structs"
 version = "0.3"
 
 [dependencies.cached]
-version = "0.46"
+version = "0.47"
 features = ["async_tokio_rt_multi_thread"]
 
 [dependencies.clap]
@@ -65,13 +66,13 @@ version = "0.4.3"
 features = ["serde"]
 
 [dependencies.http]
-version = "0.2"
+version = "1"
 
 [dependencies.httparse]
 version = "1"
 
 [dependencies.hyper]
-version = "0.14"
+version = "1"
 features=["full"]
 
 [dependencies.lazy_static]
@@ -88,13 +89,15 @@ version = "0.20"
 features = ["auto-initialize"]
 
 [dependencies.regex]
-version = "1.9.6"
+version = "1.10.2"
 
 [dependencies.rand]
 version = "0.8"
 
 [dependencies.reqwest]
 version = "0.11"
+default-features = false
+features = ["json", "native-tls", "gzip", "deflate", "multipart", "stream"]
 
 [dependencies.serde]
 version = "1"
@@ -104,23 +107,35 @@ features = ["derive"]
 version = "1"
 
 [dependencies.serenity]
-version = "0.12.0-rc"
-features = ["builder", "cache", "client", "framework", "gateway", "http", "model", "standard_framework", "rustls_backend", "utils", "voice", "tokio_task_builder"]
+version = "0.12.0"
+default-features = false
+features = [
+    "builder",
+    "cache",
+    "chrono",
+    "client",
+    "framework",
+    "gateway",
+    "model",
+    "http",
+    "standard_framework",
+    "native_tls_backend",
+    "utils",
+    "voice",
+    "tokio_task_builder"
+]
 
 [dependencies.sha2]
 version = "0.10.8"
 
 [dependencies.songbird]
-version = "0.4.0-rc"
+version = "0.4.0"
+default-features = false
 features=["builtin-queue", "driver", "gateway", "serenity", "native", "receive"]
 
 [dependencies.sqlx]
-version = "0.7.2"
+version = "0.7.3"
 features = ["runtime-tokio", "sqlite", "chrono", "migrate", "macros", "uuid"]
-
-[dependencies.thesaurus]
-version = "0.5.2"
-features = ["wordnet"]
 
 [dependencies.tracing]
 version = "0.1"
@@ -149,7 +164,7 @@ version = "0.8"
 version = "0.4"
 
 [dependencies.tower-http]
-version = "0.4.4"
+version = "0.5"
 features = ["trace", "request-id", "util", "add-extension", "auth", "compression-full", "sensitive-headers"]
 
 [dependencies.url]
@@ -157,7 +172,7 @@ version = "2"
 features = ["serde"]
 
 [dependencies.uuid]
-version = "1.4.1"
+version = "1.6.1"
 features = ["serde"]
 
 

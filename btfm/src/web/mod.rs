@@ -1,5 +1,5 @@
 use axum::{
-    body::BoxBody,
+    body::Body,
     extract::Extension,
     http::{Request, Response, StatusCode},
     response::IntoResponse,
@@ -92,7 +92,7 @@ async fn handle_404() -> impl IntoResponse {
 }
 
 impl IntoResponse for Error {
-    fn into_response(self) -> Response<BoxBody> {
+    fn into_response(self) -> Response<Body> {
         let (status, error_message) = match self {
             Error::Database(_) => (
                 StatusCode::SERVICE_UNAVAILABLE,
