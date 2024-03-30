@@ -2,9 +2,7 @@
 
 use anyhow::Context;
 use futures::StreamExt;
-use gstreamer::prelude::Cast;
-use gstreamer::prelude::GstBinExtManual;
-use gstreamer::traits::{ElementExt, GstBinExt};
+use gstreamer::prelude::{Cast, ElementExt, GstBinExt, GstBinExtManual};
 use gstreamer::Element;
 use tokio::sync::mpsc::Receiver;
 use tracing::instrument;
