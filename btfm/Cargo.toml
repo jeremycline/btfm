@@ -137,6 +137,10 @@ features=["builtin-queue", "driver", "gateway", "serenity", "native", "receive"]
 version = "0.7.4"
 features = ["runtime-tokio", "sqlite", "chrono", "migrate", "macros", "uuid"]
 
+[dependencies.symphonia]
+version = "0.5"
+features = ["all"]
+
 [dependencies.tracing]
 version = "0.1"
 
