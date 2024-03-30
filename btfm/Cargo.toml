@@ -176,6 +176,8 @@ features = ["serde"]
 version = "1.8.0"
 features = ["serde"]
 
+[dev-dependencies]
+tempfile = "3"
 
 [[bin]]
 name = "btfm-server"
