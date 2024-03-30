@@ -424,6 +424,7 @@ dependencies = [
  "songbird",
  "sqlx",
  "symphonia",
+ "tempfile",
  "thiserror",
  "tokio",
  "tokio-stream",

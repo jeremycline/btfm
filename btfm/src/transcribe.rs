@@ -237,3 +237,37 @@ impl TranscriberWorker {
         }
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use std::io::Write;
+
+    use bytes::Bytes;
+
+    use super::*;
+
+    const BYTES: Bytes = Bytes::from_static(include_bytes!("../test_data/discord.opus"));
+    const MODEL: Bytes = Bytes::from_static(include_bytes!("../test_data/small.en.pt"));
+
+    #[tokio::test]
+    async fn transcribe() {
+        gstreamer::init().unwrap();
+
+        let mut config = Config::default();
+        let mut model = tempfile::NamedTempFile::new().unwrap();
+        let f = model.as_file_mut();
+        f.write_all(&MODEL).unwrap();
+        f.flush().unwrap();
+        config.whisper.model = model.path().into();
+
+        let transcriber = Transcriber::new(&config).unwrap();
+        let (tx, rx) = mpsc::channel(32);
+        let result = transcriber.stream(rx).await;
+        tx.send(BYTES).await.unwrap();
+        drop(tx);
+        let result = result.await.unwrap();
+
+        assert_eq!("I don't know how.".to_string(), result.trim());
+    }
+}
