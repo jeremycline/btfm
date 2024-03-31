@@ -43,11 +43,14 @@ pub enum Error {
     Axum(#[from] axum::extract::multipart::MultipartError),
     #[error("A JSON serialization error occurred: {0}")]
     Json(#[from] serde_json::Error),
+    #[error("A Candle error occurred: {0}")]
+    Candle(#[from] candle_core::Error),
 }
 
 pub mod cli;
 pub mod config;
 pub mod db;
+pub(crate) mod decoder;
 pub mod discord;
 pub(crate) mod mimic;
 pub mod transcode;

@@ -11,6 +11,13 @@ repository = "https://github.com/jeremycline/btfm/"
 
 [dependencies]
 bytes = "1.6.0"
+byteorder = "1.5.0"
+candle-core = "0.4.1"
+candle-transformers = "0.4.1"
+candle-nn = "0.4.1"
+cudarc = { version = "0.10.0", features = ["f16"], optional = true }
+half = { version = "2.4.0", features = ["num-traits", "use-intrinsics", "rand_distr"], optional = true }
+tokenizers = { version = "0.15", default-features = false, features = ["onig"]}
 
 [dependencies.anyhow]
 version = "1.0.81"
@@ -181,6 +188,15 @@ features = ["serde"]
 
 [dev-dependencies]
 tempfile = "3"
+
+[build-dependencies]
+bindgen_cuda = { version = "0.1.1", optional = true }
+
+[features]
+default = []
+cuda = ["candle-core/cuda", "candle-nn/cuda", "candle-transformers/cuda", "dep:bindgen_cuda", "dep:cudarc"]
+cudnn = ["candle-core/cudnn"]
+nccl = ["cuda", "cudarc/nccl", "dep:half"]
 
 [[bin]]
 name = "btfm-server"

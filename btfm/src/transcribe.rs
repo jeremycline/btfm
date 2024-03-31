@@ -8,15 +8,21 @@
 use std::path::PathBuf;
 use std::thread::JoinHandle;
 
-use numpy::IntoPyArray;
-use pyo3::{types::PyModule, Python};
+use candle_core::Tensor;
+use candle_nn::VarBuilder;
+use candle_transformers::models::whisper::{self as m, audio, Config as WhisperConfig};
+use tokenizers::Tokenizer;
 use tokio::sync::{mpsc, oneshot};
 use tracing::Instrument;
 
 use crate::config::Config;
+use crate::decoder::{Decoder, Model};
 use crate::transcode::discord_to_whisper;
 
-const WHISPER: &str = include_str!("transcribe.py");
+// TODO: make this a build-time configurable?
+const MODEL: &'static [u8] = include_bytes!("../base-en/model.safetensors");
+const MODEL_CONFIG: &'static [u8] = include_bytes!("../base-en/config.json");
+const MODEL_TOKENIZER: &'static [u8] = include_bytes!("../base-en/tokenizer.json");
 
 #[derive(Debug)]
 pub enum TranscriptionRequest {
@@ -114,55 +120,79 @@ impl TranscriberWorker {
     ///
     /// This is intended to be run in a dedicated thread.
     fn transcribe(
-        model: PathBuf,
+        _model: PathBuf,
         mut audio_receiver: mpsc::Receiver<Request>,
     ) -> Result<(), crate::Error> {
-        let result = Python::with_gil(|py| {
-            let module = PyModule::from_code(py, WHISPER, "transcribe.py", "transcribe")?;
+        // TODO: Flip on CUDA if available
+        let device = if candle_core::utils::cuda_is_available() {
+            candle_core::Device::new_cuda(0)?
+        } else {
+            candle_core::Device::Cpu
+        };
 
-            let load_model = module.getattr("load_model")?;
-            load_model.call1((model,))?;
+        let model_quantized = false;
+        let model_config: WhisperConfig = serde_json::from_slice(MODEL_CONFIG)?;
+        let tokenizer = Tokenizer::from_bytes(MODEL_TOKENIZER).unwrap();
 
-            let transcriber = module.getattr("transcribe")?;
+        let mel_bytes = match model_config.num_mel_bins {
+            80 => include_bytes!("../melfilters/80.bytes").as_slice(),
+            128 => include_bytes!("../melfilters/128.bytes").as_slice(),
+            nmel => panic!("unexpected num_mel_bins {nmel}"),
+        };
+        let mut mel_filters = vec![0f32; mel_bytes.len() / 4];
+        <byteorder::LittleEndian as byteorder::ByteOrder>::read_f32_into(
+            mel_bytes,
+            &mut mel_filters,
+        );
 
-            while let Some(request) = audio_receiver.blocking_recv() {
-                match request {
-                    Request::Raw(audio, sender) => {
-                        tracing::debug!("Processing new transcription request");
-                        let audio = audio.into_pyarray(py);
-                        let result = transcriber
-                            .call1((audio,))
-                            .and_then(|r| r.extract())
-                            .unwrap_or_default();
-                        if sender.send(result).is_err() {
-                            tracing::error!("Failed to send STT result back to the caller.");
-                        }
-                    }
-                    Request::File(audio, sender) => {
-                        tracing::debug!("Processing new transcription request");
-                        let result = transcriber
-                            .call1((audio,))
-                            .and_then(|r| r.extract())
-                            .unwrap_or_default();
-                        if sender.send(result).is_err() {
-                            tracing::error!("Failed to send STT result back to the caller.");
-                        }
-                    }
-                    Request::Shutdown => {
-                        tracing::info!("Shutting down the transcriber");
-                        break;
+        let model = if model_quantized {
+            let vb = candle_transformers::quantized_var_builder::VarBuilder::from_gguf_buffer(
+                MODEL, &device,
+            )?;
+            Model::Quantized(m::quantized_model::Whisper::load(
+                &vb,
+                model_config.clone(),
+            )?)
+        } else {
+            let vb = VarBuilder::from_buffered_safetensors(MODEL.into(), m::DTYPE, &device)?;
+            Model::Normal(m::model::Whisper::load(&vb, model_config.clone())?)
+        };
+
+        let mut decoder =
+            Decoder::new(model, tokenizer, 299792458_u64, &device, false, false).unwrap();
+        let num_mel_bins = model_config.num_mel_bins;
+
+        while let Some(request) = audio_receiver.blocking_recv() {
+            match request {
+                Request::Raw(audio, sender) => {
+                    tracing::debug!("Processing new transcription request");
+                    let mel = audio::pcm_to_mel(&model_config, &audio, &mel_filters);
+                    let mel_len = mel.len();
+                    let mel =
+                        Tensor::from_vec(mel, (1, num_mel_bins, mel_len / num_mel_bins), &device)?;
+                    let segments = decoder.run(&mel).unwrap_or_default();
+                    let result = segments
+                        .into_iter()
+                        .map(|segment| segment.dr.text)
+                        .collect::<Vec<_>>()
+                        .join(" ");
+
+                    if sender.send(result).is_err() {
+                        tracing::error!("Failed to send STT result back to the caller.");
                     }
                 }
+                Request::File(audio, sender) => {
+                    tracing::debug!("Processing new transcription request");
+                    todo!("Implement file transcription");
+                }
+                Request::Shutdown => {
+                    tracing::info!("Shutting down the transcriber");
+                    break;
+                }
             }
-
-            Ok(())
-        });
-
-        if result.is_err() {
-            tracing::error!(err = ?result, "Transcribe thread failed!");
         }
 
-        result
+        Ok(())
     }
 
     async fn run(mut self) {
@@ -237,7 +267,6 @@ impl TranscriberWorker {
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {
