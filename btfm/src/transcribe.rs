@@ -20,9 +20,9 @@ use crate::decoder::{Decoder, Model};
 use crate::transcode::discord_to_whisper;
 
 // TODO: make this a build-time configurable?
-const MODEL: &'static [u8] = include_bytes!("../base-en/model.safetensors");
-const MODEL_CONFIG: &'static [u8] = include_bytes!("../base-en/config.json");
-const MODEL_TOKENIZER: &'static [u8] = include_bytes!("../base-en/tokenizer.json");
+const MODEL: &'static [u8] = include_bytes!(env!("BTFM_MODEL_FILE"));
+const MODEL_CONFIG: &'static [u8] = include_bytes!(env!("BTFM_MODEL_CONFIG_FILE"));
+const MODEL_TOKENIZER: &'static [u8] = include_bytes!(env!("BTFM_MODEL_TOKENIZER_FILE"));
 
 #[derive(Debug)]
 pub enum TranscriptionRequest {

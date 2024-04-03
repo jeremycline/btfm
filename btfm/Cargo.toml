@@ -191,6 +191,7 @@ tempfile = "3"
 
 [build-dependencies]
 bindgen_cuda = { version = "0.1.1", optional = true }
+reqwest = { version = "0.12", features = ["blocking", "native-tls", "gzip"] }
 
 [features]
 default = []
