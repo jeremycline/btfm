@@ -79,13 +79,13 @@ features=["full"]
 version = "1.4"
 
 [dependencies.numpy]
-version = "0.20"
+version = "0.21"
 
 [dependencies.once_cell]
 version = "1"
 
 [dependencies.pyo3]
-version = "0.20"
+version = "0.21"
 features = ["auto-initialize"]
 
 [dependencies.regex]
