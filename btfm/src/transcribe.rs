@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::thread::JoinHandle;
 
 use numpy::IntoPyArray;
+use pyo3::types::PyAnyMethods;
 use pyo3::{types::PyModule, Python};
 use tokio::sync::{mpsc, oneshot};
 use tracing::Instrument;
@@ -118,7 +119,7 @@ impl TranscriberWorker {
         mut audio_receiver: mpsc::Receiver<Request>,
     ) -> Result<(), crate::Error> {
         let result = Python::with_gil(|py| {
-            let module = PyModule::from_code(py, WHISPER, "transcribe.py", "transcribe")?;
+            let module = PyModule::from_code_bound(py, WHISPER, "transcribe.py", "transcribe")?;
 
             let load_model = module.getattr("load_model")?;
             load_model.call1((model,))?;
@@ -129,7 +130,7 @@ impl TranscriberWorker {
                 match request {
                     Request::Raw(audio, sender) => {
                         tracing::debug!("Processing new transcription request");
-                        let audio = audio.into_pyarray(py);
+                        let audio = audio.into_pyarray_bound(py);
                         let result = transcriber
                             .call1((audio,))
                             .and_then(|r| r.extract())
