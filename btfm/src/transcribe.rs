@@ -9,7 +9,10 @@ use std::path::PathBuf;
 use std::thread::JoinHandle;
 
 use numpy::IntoPyArray;
-use pyo3::{types::PyModule, Python};
+use pyo3::{
+    types::{PyAnyMethods, PyModule},
+    Python,
+};
 use tokio::sync::{mpsc, oneshot};
 use tracing::Instrument;
 
@@ -118,7 +121,8 @@ impl TranscriberWorker {
         mut audio_receiver: mpsc::Receiver<Request>,
     ) -> Result<(), crate::Error> {
         let result = Python::with_gil(|py| {
-            let module = PyModule::from_code(py, WHISPER, "transcribe.py", "transcribe")?;
+            let whisper = std::ffi::CString::new(WHISPER).unwrap();
+            let module = PyModule::from_code(py, &whisper, c"transcribe.py", c"transcribe")?;
 
             let load_model = module.getattr("load_model")?;
             load_model.call1((model,))?;
