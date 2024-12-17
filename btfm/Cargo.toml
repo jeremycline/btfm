@@ -107,7 +107,7 @@ features = ["derive"]
 version = "1"
 
 [dependencies.serenity]
-version = "0.12.1"
+version = "0.12.3"
 default-features = false
 features = [
     "builder",
@@ -129,7 +129,7 @@ features = [
 version = "0.10.8"
 
 [dependencies.songbird]
-version = "0.4.1"
+version = "0.4.6"
 default-features = false
 features=["builtin-queue", "driver", "gateway", "serenity", "native", "receive"]
 
