@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::{fs, str::FromStr};
 
 use clap::Parser;
-use serenity::{client::Client, framework::StandardFramework, prelude::*};
+use serenity::{client::Client, prelude::*};
 use songbird::{driver::DecodeMode, SerenityInit, Songbird};
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
@@ -67,7 +67,6 @@ async fn process_command(opts: cli::Btfm, db_pool: Pool<Sqlite>) -> Result<(), E
         cli::Command::Discord {} => {
             gstreamer::init()?;
 
-            let framework = StandardFramework::new();
             // Configure Songbird to decode audio to signed 16 bit-per-same stereo PCM.
             let songbird = Songbird::serenity();
             songbird.set_config(songbird::Config::default().decode_mode(DecodeMode::Decode));
@@ -75,7 +74,6 @@ async fn process_command(opts: cli::Btfm, db_pool: Pool<Sqlite>) -> Result<(), E
             let intents = GatewayIntents::non_privileged();
             let mut client = Client::builder(&opts.config.discord_token, intents)
                 .event_handler(Handler)
-                .framework(framework)
                 .register_songbird_with(songbird)
                 .await?;
 
