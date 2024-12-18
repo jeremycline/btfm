@@ -5,10 +5,8 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use bytes::{BufMut, BytesMut};
-use chrono::NaiveDateTime;
 use rand::prelude::*;
 use regex::Regex;
 use serenity::{async_trait, model::id::ChannelId, prelude::*};
@@ -178,14 +176,7 @@ async fn handle_text(
     }
     let text = RE.replace_all(&punctuated_text, "").to_lowercase();
 
-    let current_time = NaiveDateTime::from_timestamp_opt(
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("It's time to check your system clock")
-            .as_secs() as i64,
-        0,
-    )
-    .expect("Really, check your clock");
+    let current_time = chrono::Utc::now().naive_utc();
     let mut btfm = btfm_data.lock().await;
 
     if text.contains("status report")

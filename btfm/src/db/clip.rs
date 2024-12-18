@@ -82,14 +82,7 @@ pub async fn mark_played(
     clip: &mut Clip,
 ) -> Result<u64, crate::Error> {
     clip.plays += 1;
-    clip.last_played = chrono::NaiveDateTime::from_timestamp_opt(
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("Check your system clock")
-            .as_secs() as i64,
-        0,
-    )
-    .unwrap();
+    clip.last_played = chrono::Utc::now().naive_utc();
     sqlx::query!(
         "
         UPDATE clips
@@ -132,7 +125,7 @@ pub async fn last_play_time(connection: &mut SqliteConnection) -> NaiveDateTime 
     .await;
     match clip_query {
         Ok(clip) => clip.last_played,
-        Err(_) => NaiveDateTime::from_timestamp_opt(0, 0).unwrap(),
+        Err(_) => chrono::NaiveDateTime::UNIX_EPOCH,
     }
 }
 

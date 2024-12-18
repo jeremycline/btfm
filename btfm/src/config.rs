@@ -120,9 +120,8 @@ impl Display for Config {
 pub fn load_config(path: &str) -> Result<Config, Error> {
     let path = PathBuf::from(path);
     let config_string = std::fs::read_to_string(path)?;
-    let config: Config = toml::from_str(&config_string).map_err(|err| {
+    let config: Config = toml::from_str(&config_string).inspect_err(|_| {
         println!("Example config format:\n\n{}", Config::default());
-        err
     })?;
     Ok(config)
 }
