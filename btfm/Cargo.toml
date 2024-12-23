@@ -13,7 +13,7 @@ repository = "https://github.com/jeremycline/btfm/"
 bytes = "1.6.0"
 
 [dependencies.anyhow]
-version = "1.0.81"
+version = "1.0.95"
 features = ["backtrace"]
 
 [dependencies.axum]
