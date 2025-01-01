@@ -1,7 +1,7 @@
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [package]
 name = "btfm"
-version = "0.21.2"
+version = "0.25.0"
 edition = "2021"
 description = "A Discord bot that plays audio clips based on voice chat"
 license = "GPL-2.0-or-later"
@@ -17,7 +17,7 @@ version = "1.0.81"
 features = ["backtrace"]
 
 [dependencies.axum]
-version = "0.7"
+version = "0.8"
 features = ["multipart"]
 
 [dependencies.axum-server]
