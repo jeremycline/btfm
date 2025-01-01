@@ -42,20 +42,20 @@ impl MakeRequestId for MakeRequestUlid {
 pub fn create_router(config: &HttpApi, db: SqlitePool, transcriber: Transcriber) -> Router {
     let app = Router::new()
         .route("/status/", get(handlers::status::get))
-        .route("/v1/clips/:uuid/phrases/", get(handlers::phrase::by_clip))
+        .route("/v1/clips/{uuid}/phrases/", get(handlers::phrase::by_clip))
         .route(
-            "/v1/clips/:uuid",
+            "/v1/clips/{uuid}",
             get(handlers::clip::get)
                 .delete(handlers::clip::delete)
                 .put(handlers::clip::edit),
         )
-        .route("/v1/clips/:uuid/audio", get(handlers::clip::download_clip))
+        .route("/v1/clips/{uuid}/audio", get(handlers::clip::download_clip))
         .route(
             "/v1/clips/",
             get(handlers::clip::get_all).post(handlers::clip::create),
         )
         .route(
-            "/v1/phrases/:uuid",
+            "/v1/phrases/{uuid}",
             get(handlers::phrase::get).delete(handlers::phrase::delete),
         )
         .route(
