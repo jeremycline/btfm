@@ -85,7 +85,7 @@ impl VoiceEventHandler for Receiver {
                     if user.transcriber.is_none() {
                         let (audio_sender, audio_receiver) = mpsc::channel(2048);
                         let span =
-                            tracing::info_span!("stream", id = %Uuid::new_v4(), ssrc = %ssrc);
+                            tracing::info_span!("stream", id = %Uuid::now_v7(), ssrc = %ssrc);
                         info!(parent: &span, "Beginning new transcription stream");
                         let text_receiver =
                             transcriber.stream(audio_receiver).instrument(span).await;

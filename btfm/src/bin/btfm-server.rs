@@ -2,6 +2,7 @@
 use std::sync::Arc;
 use std::{fs, str::FromStr};
 
+use anyhow::Context;
 use clap::Parser;
 use serenity::{client::Client, prelude::*};
 use songbird::{driver::DecodeMode, SerenityInit, Songbird};
@@ -9,7 +10,7 @@ use sqlx::{
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
     ConnectOptions, Pool, Sqlite,
 };
-use tracing::{debug, error, info};
+use tracing::{info, instrument, Instrument};
 
 use btfm::discord::{text::Handler, BtfmData};
 use btfm::{cli, db, Error};
@@ -17,7 +18,7 @@ use btfm::{cli, db, Error};
 static MIGRATIONS: sqlx::migrate::Migrator = sqlx::migrate!("./migrations/");
 
 #[tokio::main(flavor = "multi_thread")]
-async fn main() {
+async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
 
     let opts = cli::Btfm::parse();
@@ -29,37 +30,35 @@ async fn main() {
         std::fs::DirBuilder::new()
             .recursive(true)
             .create(&opts.config.data_directory)
-            .unwrap();
+            .context("Data directory doesn't exist and couldn't be created.")?;
     }
 
-    debug!("Starting database connection to perform the database migration");
-    let _ = SqliteConnectOptions::from_str(&opts.config.database_url())
-        .unwrap()
-        .create_if_missing(true)
-        .connect()
-        .await
-        .unwrap();
-    let db_pool = match SqlitePoolOptions::new()
-        .connect(&opts.config.database_url())
-        .await
-    {
-        Ok(pool) => match MIGRATIONS.run(&pool).await {
-            Ok(_) => pool,
-            Err(e) => {
-                error!("Failed to migrate the database: {:?}", e);
-                return;
-            }
-        },
-        Err(e) => {
-            error!("Unable to connect to the database: {}", e);
-            return;
-        }
-    };
-
+    let db_pool = migrate(&opts).await?;
     match process_command(opts, db_pool).await {
         Ok(_) => {}
         Err(e) => eprintln!("Error: {e}"),
-    }
+    };
+
+    Ok(())
+}
+
+#[instrument(skip_all)]
+async fn migrate(opts: &cli::Btfm) -> anyhow::Result<Pool<Sqlite>> {
+    // Create the database if it doesn't exist; there's no option to create
+    // if missing on the PoolOptions.
+    let _ = SqliteConnectOptions::from_str(&opts.config.database_url())?
+        .create_if_missing(true)
+        .connect()
+        .await?;
+    let db_pool = SqlitePoolOptions::new()
+        .connect(&opts.config.database_url())
+        .await?;
+    MIGRATIONS
+        .run(&db_pool)
+        .await
+        .context("Failed to migrate database to latest versions!")?;
+
+    Ok(db_pool)
 }
 
 async fn process_command(opts: cli::Btfm, db_pool: Pool<Sqlite>) -> Result<(), Error> {
@@ -98,31 +97,41 @@ async fn process_command(opts: cli::Btfm, db_pool: Pool<Sqlite>) -> Result<(), E
                 });
                 web_transcriber
             };
-            let discord_client_handle = tokio::spawn(async move { client.start().await });
+            let discord_span = tracing::info_span!("discord");
+            let discord_client_handle =
+                tokio::spawn(async move { client.start().await }.instrument(discord_span));
 
             let http_api = opts.config.http_api.clone();
             let router = btfm::web::create_router(&http_api, db_pool, transcriber);
+            let http_span = tracing::info_span!("http_server");
             let server_handle = match (http_api.tls_certificate, http_api.tls_key) {
                 (None, None) => {
                     info!("Starting HTTP server on {:?}", &http_api.url);
-                    tokio::spawn(async move {
-                        axum_server::bind(http_api.url)
+                    tokio::spawn(
+                        async move {
+                            axum_server::bind(http_api.url)
+                                .handle(http_handle)
+                                .serve(router.into_make_service())
+                                .await
+                                .map_err(Error::Server)
+                        }
+                        .instrument(http_span),
+                    )
+                }
+                (Some(cert), Some(key)) => tokio::spawn(
+                    async move {
+                        info!("Starting HTTPS server on {:?}", &http_api.url);
+                        let tls_config =
+                            axum_server::tls_openssl::OpenSSLConfig::from_pem_file(cert, key)
+                                .unwrap();
+                        axum_server::bind_openssl(http_api.url, tls_config)
                             .handle(http_handle)
                             .serve(router.into_make_service())
                             .await
                             .map_err(Error::Server)
-                    })
-                }
-                (Some(cert), Some(key)) => tokio::spawn(async move {
-                    info!("Starting HTTPS server on {:?}", &http_api.url);
-                    let tls_config =
-                        axum_server::tls_openssl::OpenSSLConfig::from_pem_file(cert, key).unwrap();
-                    axum_server::bind_openssl(http_api.url, tls_config)
-                        .handle(http_handle)
-                        .serve(router.into_make_service())
-                        .await
-                        .map_err(Error::Server)
-                }),
+                    }
+                    .instrument(http_span),
+                ),
                 _ => return Err(Error::ConfigValueError(
                     "'tls_certificate' and 'tls_key' must both be set or neither should be set."
                         .into(),

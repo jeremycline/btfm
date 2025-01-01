@@ -242,7 +242,6 @@ impl TranscriberWorker {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use std::io::Write;
